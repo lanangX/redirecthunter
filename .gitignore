@@ -18,6 +18,7 @@ htmlcov/
 
 # RedirectHunter runtime artifacts
 *.db
+*.sqlite
 *.db-wal
 *.db-shm
 !examples/urls.db
@@ -28,3 +29,9 @@ htmlcov/
 .idea/
 *.swp
 .DS_Store
+
+*.env
+credentials/
+secrets/
+
+raw_data/

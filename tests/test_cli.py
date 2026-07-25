@@ -322,7 +322,7 @@ class TestFindCommand:
         assert "┃" not in output_file.read_text()
         assert "example.test" not in output_file.read_text()
 
-    def test_find_output_include_source(self, tmp_path: Path) -> None:
+    def test_find_output_field_both_includes_source(self, tmp_path: Path) -> None:
         db_path, scan_id = self._scan_with_mixed_redirects(tmp_path)
         output_file = tmp_path / "external_with_source.txt"
         result = runner.invoke(
@@ -334,12 +334,94 @@ class TestFindCommand:
                 str(db_path),
                 "--output",
                 str(output_file),
-                "--include-source",
+                "--field",
+                "both",
             ],
         )
         assert result.exit_code == 0, result.output
         content = output_file.read_text()
         assert "https://example.test/ext -> https://evil-tracker.com/steal" in content
+
+    def test_find_output_field_source_only(self, tmp_path: Path) -> None:
+        db_path, scan_id = self._scan_with_mixed_redirects(tmp_path)
+        output_file = tmp_path / "sources_only.txt"
+        result = runner.invoke(
+            app,
+            [
+                "find",
+                scan_id,
+                "--database",
+                str(db_path),
+                "--output",
+                str(output_file),
+                "--field",
+                "source",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        lines = output_file.read_text().strip().splitlines()
+        assert lines == ["https://example.test/ext", "https://example.test/tricky"]
+        # No destinations, no arrows -- source URLs only.
+        assert "evil-tracker.com" not in output_file.read_text()
+        assert "->" not in output_file.read_text()
+
+    def test_find_invert_shows_matching_domain_instead_of_external(self, tmp_path: Path) -> None:
+        db_path, scan_id = self._scan_with_mixed_redirects(tmp_path)
+        result = runner.invoke(app, ["find", scan_id, "--database", str(db_path), "--invert"])
+        assert result.exit_code == 0, result.output
+        # With --invert: internal destinations (example.org, sub.example.org) show up...
+        assert "example.org/landing" in result.output
+        assert "sub.example.org/page" in result.output
+        # ...and the external ones from the non-inverted test must NOT appear.
+        assert "evil-tracker.com" not in result.output
+        assert "notexample.org.evil.com" not in result.output
+
+    def test_find_invert_with_output_source_only(self, tmp_path: Path) -> None:
+        """Reproduces the exact real-world workflow: confirm which source URLs
+        genuinely redirect to the target domain, saving just those source URLs."""
+        db_path, scan_id = self._scan_with_mixed_redirects(tmp_path)
+        output_file = tmp_path / "confirmed_backlinks.txt"
+        result = runner.invoke(
+            app,
+            [
+                "find",
+                scan_id,
+                "--database",
+                str(db_path),
+                "--invert",
+                "--field",
+                "source",
+                "--output",
+                str(output_file),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        lines = sorted(output_file.read_text().strip().splitlines())
+        assert lines == sorted(["https://example.test/int", "https://example.test/sub"])
+
+    def test_find_no_early_break_generator_cleanup_is_clean(self, tmp_path: Path) -> None:
+        """Regression test for the abandoned-async-generator bug: `show` used to
+        leave db.iter_results() unclosed when breaking early at --limit, causing
+        a 'Cannot operate on a closed database' traceback dumped to stderr after
+        the command had already finished and printed its output. Verifies the
+        command completes cleanly with a low --limit against a scan with more
+        results than the limit."""
+        urls_file = tmp_path / "urls.txt"
+        urls_file.write_text("\n".join(f"https://example.test/r{i}" for i in range(10)) + "\n")
+        db_path = tmp_path / "scan.db"
+        with respx.mock(assert_all_called=True) as mock:
+            for i in range(10):
+                mock.get(f"https://example.test/r{i}").mock(return_value=httpx.Response(200, text="ok"))
+            scan_result = runner.invoke(
+                app,
+                ["scan", str(urls_file), "--method", "GET", "--no-http2", "--database", str(db_path)],
+            )
+        assert scan_result.exit_code == 0
+        scan_id = re.search(r"Starting scan (\S+)", scan_result.output).group(1)
+
+        result = runner.invoke(app, ["show", scan_id, "--database", str(db_path), "--limit", "3"])
+        assert result.exit_code == 0, result.output
+        assert "Showing 3 result(s)" in result.output
 
     def test_find_with_short_scan_id(self, tmp_path: Path) -> None:
         db_path, scan_id = self._scan_with_mixed_redirects(tmp_path)

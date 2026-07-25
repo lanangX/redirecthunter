@@ -18,6 +18,8 @@ Rich.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
@@ -598,28 +600,29 @@ def show_cmd(
                 table.add_column(column, overflow="fold")
 
             shown = 0
-            async for result in db.iter_results(resolved_scan_id):
-                if alive_only and not result.alive:
-                    continue
-                if redirects_only and result.redirect_type.value == "none":
-                    continue
-                if cloudflare_only and not result.fingerprint.cloudflare.is_cloudflare:
-                    continue
-                if shown >= limit:
-                    break
+            async with contextlib.aclosing(db.iter_results(resolved_scan_id)) as results:
+                async for result in results:
+                    if alive_only and not result.alive:
+                        continue
+                    if redirects_only and result.redirect_type.value == "none":
+                        continue
+                    if cloudflare_only and not result.fingerprint.cloudflare.is_cloudflare:
+                        continue
+                    if shown >= limit:
+                        break
 
-                table.add_row(
-                    result.source_url,
-                    str(result.status_code) if result.status_code is not None else "-",
-                    result.redirect_type.value,
-                    result.final_url or "-",
-                    str(result.hop_count),
-                    result.server or "-",
-                    "yes" if result.fingerprint.cloudflare.is_cloudflare else "no",
-                    "[green]yes[/green]" if result.alive else "[red]no[/red]",
-                    f"{result.latency_ms:.0f} ms",
-                )
-                shown += 1
+                    table.add_row(
+                        result.source_url,
+                        str(result.status_code) if result.status_code is not None else "-",
+                        result.redirect_type.value,
+                        result.final_url or "-",
+                        str(result.hop_count),
+                        result.server or "-",
+                        "yes" if result.fingerprint.cloudflare.is_cloudflare else "no",
+                        "[green]yes[/green]" if result.alive else "[red]no[/red]",
+                        f"{result.latency_ms:.0f} ms",
+                    )
+                    shown += 1
 
             console.print(table)
             console.print(f"[dim]Showing {shown} result(s) (limit={limit}).[/dim]")
@@ -627,6 +630,14 @@ def show_cmd(
             await db.close()
 
     asyncio.run(_do_show())
+
+
+class OutputField(str, Enum):
+    """What to write per line when `find --output` is used."""
+
+    DESTINATION = "destination"
+    SOURCE = "source"
+    BOTH = "both"
 
 
 @app.command(name="find")
@@ -643,30 +654,50 @@ def find_cmd(
             help="Domain to compare against. Default: auto-detected from the scan's --target.",
         ),
     ] = None,
+    invert: Annotated[
+        bool,
+        typer.Option(
+            "--invert",
+            help="Show redirects that MATCH the domain instead of ones outside it "
+            "(e.g. confirm which source URLs correctly redirect to your target).",
+        ),
+    ] = False,
     output: Annotated[
         Path | None,
         typer.Option(
             "--output",
             "-o",
-            help="Save results as a plain link list (one URL per line) to this file, instead of printing a table.",
+            help="Save results as a plain list (one entry per line) to this file, instead of printing a table.",
         ),
     ] = None,
-    include_source: Annotated[
-        bool,
+    field: Annotated[
+        OutputField,
         typer.Option(
-            "--include-source",
-            help="With --output, also include the source URL: 'source_url -> final_url' instead of just final_url.",
+            "--field",
+            case_sensitive=False,
+            help="With --output: 'destination' (default), 'source', or 'both' "
+            "('source_url -> destination' per line).",
         ),
-    ] = False,
+    ] = OutputField.DESTINATION,
     limit: Annotated[int, typer.Option("--limit", help="Maximum rows shown in the terminal table.")] = 50,
 ) -> None:
-    """Find redirects that point outside a given domain (e.g. off-site redirect targets).
+    """Find redirects that land outside a given domain -- or, with --invert, that correctly land inside it.
 
     Without --output, prints a Rich table (like `show`). With --output,
-    writes a plain list of links -- one URL per line, nothing else -- to
-    the given file. This is the check most relevant for open-redirect
-    auditing: does a redirect endpoint actually send visitors somewhere
-    outside the intended/authorized domain?
+    writes a plain list -- one entry per line, nothing else -- to the
+    given file.
+
+    Without --invert (default), this answers the open-redirect audit
+    question: does a redirect endpoint send visitors somewhere outside the
+    intended/authorized domain?
+
+    With --invert, it answers the opposite, often equally useful,
+    question: out of many candidate redirect/backlink endpoints, which
+    ones actually, verifiably redirect to your domain? (Many public
+    ad-click/redirect services don't reliably forward to the URL you give
+    them -- some check the User-Agent or Referer and only redirect real
+    browsers, others point to an unrelated default page. --invert filters
+    down to the ones confirmed working.)
 
     Examples:
 
@@ -674,7 +705,7 @@ def find_cmd(
 
         redirecthunter find 3f9a1c2e --output external_redirects.txt
 
-        redirecthunter find 3f9a1c2e --domain example.org --output out.txt --include-source
+        redirecthunter find 3f9a1c2e --invert --field source --output confirmed_backlinks.txt
     """
     configure_logging(LogLevel.ERROR, quiet=True)
 
@@ -704,38 +735,45 @@ def find_cmd(
                 domain = urlparse(config.target).hostname or config.target
 
             matches: list[tuple[RedirectResult, str]] = []
-            async for result in db.iter_results(resolved_scan_id):
-                if result.redirect_type == RedirectType.NONE:
-                    continue
+            async with contextlib.aclosing(db.iter_results(resolved_scan_id)) as results:
+                async for result in results:
+                    if result.redirect_type == RedirectType.NONE:
+                        continue
 
-                # When the chain was followed (hop_count > 0), final_url is the true
-                # landing page. When it wasn't (--no-follow-redirects, or max-redirects
-                # hit immediately), final_url is just the request's own URL -- the real
-                # intended destination is the raw Location header instead.
-                destination = result.final_url
-                if result.hop_count == 0 and result.location:
-                    destination = resolve_relative_url(result.expanded_url, result.location)
-                if not destination:
-                    continue
+                    # When the chain was followed (hop_count > 0), final_url is the true
+                    # landing page. When it wasn't (--no-follow-redirects, or max-redirects
+                    # hit immediately), final_url is just the request's own URL -- the real
+                    # intended destination is the raw Location header instead.
+                    destination = result.final_url
+                    if result.hop_count == 0 and result.location:
+                        destination = resolve_relative_url(result.expanded_url, result.location)
+                    if not destination:
+                        continue
 
-                if is_external_domain(destination, domain):
+                    outside = is_external_domain(destination, domain)
+                    if outside == invert:  # skip when they match; keep only when they differ
+                        continue
                     matches.append((result, destination))
+
+            relation = "matching" if invert else "outside"
 
             if output is not None:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 with output.open("w", encoding="utf-8") as fh:
                     for r, destination in matches:
-                        if include_source:
+                        if field is OutputField.SOURCE:
+                            fh.write(f"{r.source_url}\n")
+                        elif field is OutputField.BOTH:
                             fh.write(f"{r.source_url} -> {destination}\n")
                         else:
                             fh.write(f"{destination}\n")
                 console.print(
-                    f"[bold green]{len(matches)} redirect(s)[/bold green] to outside '{domain}' "
+                    f"[bold green]{len(matches)} redirect(s)[/bold green] {relation} '{domain}' "
                     f"saved to {output}"
                 )
                 return
 
-            table = Table(title=f"Redirects outside '{domain}' — {resolved_scan_id}")
+            table = Table(title=f"Redirects {relation} '{domain}' — {resolved_scan_id}")
             for column in ("Source URL", "Type", "Destination", "Server", "CF"):
                 table.add_column(column, overflow="fold")
             for r, destination in matches[:limit]:

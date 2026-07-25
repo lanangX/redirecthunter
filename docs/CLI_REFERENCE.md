@@ -198,7 +198,8 @@ redirecthunter show 3f9a1c2e-... --cloudflare-only
 
 Find redirects whose destination is **outside** a given domain — the core
 open-redirect audit question: does this endpoint actually send visitors
-somewhere unintended?
+somewhere unintended? Add `--invert` to flip the question around: which
+endpoints **correctly** redirect to your domain?
 
 ```
 redirecthunter find [OPTIONS] SCAN_ID
@@ -209,8 +210,9 @@ redirecthunter find [OPTIONS] SCAN_ID
 | `SCAN_ID` | Required. Full or short prefix. |
 | `--database` / `--db` | SQLite results database path (default `redirecthunter.db`). |
 | `--external-domain` / `--domain` | Domain to compare against. Default: auto-detected from the scan's `--target`. |
-| `--output` / `-o` | Save results as a **plain link list** (one URL per line, nothing else) to this file, instead of printing a table. |
-| `--include-source` | With `--output`, write `source_url -> destination` instead of just the destination. |
+| `--invert` | Show redirects that **match** the domain instead of ones outside it. |
+| `--output` / `-o` | Save results as a plain list (one entry per line, nothing else) to this file, instead of printing a table. |
+| `--field` | With `--output`: `destination` (default), `source`, or `both` (`source_url -> destination` per line). |
 | `--limit` | `50` | Maximum rows shown in the terminal table (does not apply to `--output`). |
 
 Domain matching is hostname-based, not substring-based — `sub.example.org`
@@ -224,17 +226,27 @@ when a chain was followed, and falls back to the resolved `Location`
 header when it wasn't (otherwise the "destination" would just be the
 request's own URL).
 
+**Why `--invert` matters in practice:** many public ad-click/redirect/link
+services don't reliably forward to the URL you give them — some check
+`User-Agent`/`Referer` and only redirect real browsers, others silently
+fall back to an unrelated default page. `--invert` filters a large
+candidate list down to only the endpoints *confirmed*, by an actual
+request, to redirect where you expect.
+
 **Examples**
 
 ```bash
 # Domain auto-detected from the scan's --target
 redirecthunter find 3f9a1c2e
 
-# Save the plain link list to a file
+# Save the plain destination list to a file
 redirecthunter find 3f9a1c2e --output external_redirects.txt
 
-# Explicit domain, with source URLs included
-redirecthunter find 3f9a1c2e --domain example.org --output out.txt --include-source
+# Which source URLs actually, correctly redirect to the target?
+redirecthunter find 3f9a1c2e --invert --field source --output confirmed_backlinks.txt
+
+# Explicit domain, with source URLs included alongside destinations
+redirecthunter find 3f9a1c2e --domain example.org --output out.txt --field both
 ```
 
 ## Exit codes
