@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redirecthunter"
+version = "1.0.0"
+description = "HTTP Redirect Discovery and Validation Framework for security auditing, QA, SEO research, and migration validation."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [
+    { name = "RedirectHunter Contributors" }
+]
+keywords = [
+    "http",
+    "redirect",
+    "security-auditing",
+    "qa",
+    "seo",
+    "web-crawler",
+    "asyncio",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "httpx[http2,socks]>=0.27.0",
+    "typer>=0.12.3",
+    "rich>=13.7.1",
+    "pydantic>=2.7.1",
+    "selectolax>=0.3.21",
+    "orjson>=3.10.3",
+    "aiosqlite>=0.20.0",
+    "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+speed = ["uvloop>=0.19.0; sys_platform != 'win32'"]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.6",
+    "pytest-cov>=5.0.0",
+    "respx>=0.21.1",
+    "ruff>=0.4.4",
+    "mypy>=1.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/redirecthunter/redirecthunter"
+Repository = "https://github.com/redirecthunter/redirecthunter"
+Issues = "https://github.com/redirecthunter/redirecthunter/issues"
+Documentation = "https://github.com/redirecthunter/redirecthunter/tree/main/docs"
+
+[project.scripts]
+redirecthunter = "redirecthunter.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["redirecthunter*"]
+exclude = ["tests*", "examples*", "docs*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+ignore = [
+    "E501",
+    # UP042: `class X(str, Enum)` -> `class X(StrEnum)`. Intentionally kept as
+    # `(str, Enum)` across this codebase for maximum compatibility with
+    # Pydantic v2 JSON schema generation, orjson serialization, and Typer's
+    # enum-choice CLI options, all of which are best-tested against this
+    # long-standing pattern rather than the newer (3.11+) StrEnum.
+    "UP042",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=redirecthunter --cov-report=term-missing"

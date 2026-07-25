@@ -1,0 +1,5 @@
+url,campaign,owner
+https://example.com/go?url={TARGET},spring-launch,marketing-team
+https://example.com/redirect?to={TARGET},newsletter-2026,marketing-team
+https://example.com/out.php?goto={TARGET},legacy-affiliate,partnerships-team
+https://example.com/click?redirect={TARGET},social-share,social-team

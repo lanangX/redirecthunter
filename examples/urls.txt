@@ -1,0 +1,23 @@
+# RedirectHunter — sample TXT input
+#
+# One candidate URL per line. Lines starting with '#' are comments and
+# are skipped, as are blank lines.
+#
+# The {TARGET} placeholder is replaced with the value passed via
+# --target (or the `target:` key in a YAML config file) before each URL
+# is requested. Candidate URLs without a {TARGET} placeholder are
+# requested exactly as written.
+#
+# Run this file with:
+#   redirecthunter scan examples/urls.txt --target https://example.org
+
+https://example.com/go?url={TARGET}
+https://example.com/redirect?to={TARGET}
+https://example.com/out.php?goto={TARGET}
+https://example.com/click?redirect={TARGET}
+https://example.com/link?next={TARGET}
+
+# Candidate URLs can also omit the placeholder entirely, in which case
+# they are requested as-is -- useful for auditing a fixed inventory of
+# known redirect endpoints alongside templated ones.
+https://example.com/permanent-redirect

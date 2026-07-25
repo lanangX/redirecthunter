@@ -1,0 +1,15 @@
+# RedirectHunter — runtime dependencies
+# Install with: pip install -r requirements.txt
+# For contributor/test tooling, use: pip install -e ".[dev]"
+
+httpx[http2,socks]>=0.27.0
+typer>=0.12.3
+rich>=13.7.1
+pydantic>=2.7.1
+selectolax>=0.3.21
+orjson>=3.10.3
+aiosqlite>=0.20.0
+PyYAML>=6.0.1
+
+# Optional — faster event loop on Linux/macOS (auto-detected at runtime)
+uvloop>=0.19.0; sys_platform != "win32"

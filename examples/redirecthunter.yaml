@@ -1,0 +1,41 @@
+# RedirectHunter — sample YAML configuration
+#
+# Priority order (highest wins): CLI flags > this file > built-in defaults.
+# Every key here corresponds 1:1 to a ScanConfig field / CLI flag; any key
+# can be omitted to fall back to the next layer.
+#
+# Usage:
+#   redirecthunter scan urls.txt --config examples/redirecthunter.yaml
+#
+# Or drop a copy as `redirecthunter.yaml` in your working directory and
+# it will be auto-discovered without --config.
+
+# Replacement value substituted for {TARGET} in candidate URL templates.
+target: https://example.org
+
+# HTTP method: HEAD (fast, header-only) or GET (required to detect
+# meta-refresh and JavaScript redirects, since those need the response body).
+method: GET
+
+# Concurrency and networking
+workers: 300
+timeout: 8
+connect_timeout: 5
+retry: 2
+retry_backoff: 0.5
+rate_limit: null          # requests/second across all workers; null = unlimited
+http2: true
+verify_tls: true
+proxy: null                # e.g. socks5://127.0.0.1:1080
+
+# Redirect-following behavior
+follow_redirects: true
+max_redirects: 10
+
+# Identification
+user_agent: "RedirectHunter/1.0 (+https://github.com/lanangX/redirecthunter)"
+extra_headers:
+  X-Scan-Purpose: "authorized-security-audit"
+
+# Storage
+database_path: redirecthunter.db

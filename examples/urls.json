@@ -1,0 +1,18 @@
+[
+  {
+    "url": "https://example.com/go?url={TARGET}",
+    "campaign": "spring-launch",
+    "owner": "marketing-team"
+  },
+  {
+    "url": "https://example.com/redirect?to={TARGET}",
+    "campaign": "newsletter-2026",
+    "owner": "marketing-team"
+  },
+  {
+    "url": "https://example.com/out.php?goto={TARGET}",
+    "campaign": "legacy-affiliate",
+    "owner": "partnerships-team"
+  },
+  "https://example.com/permanent-redirect"
+]
