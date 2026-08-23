@@ -1,5 +1,15 @@
 # Backlink verification (`redirecthunter bl-check` / `bl-chain`)
 
+## Quick reference: input row formats
+
+```
+https://source.example.com/post                                    # plain URL, checked against -d/--domain
+https://source.example.com/post|target.example.com                 # per-row target override
+https://source.example.com/post|a.example.com;b.example.com         # multiple acceptable targets
+account_001|https://source.example.com/post                        # account-scoped session (see --accounts-file)
+account_001|https://source.example.com/post|target.example.com     # account-scoped + target override
+```
+
 Separate from `scan`/`crawl`. Different question, different tool:
 
 - **`redirecthunter scan`** answers *"does this URL redirect to my
@@ -80,21 +90,12 @@ had no override at all.
 
 ## Account-scoped sessions (`--accounts-file`)
 
-`-H`/`--headers-file` scope a header to one *run* or one *domain* — good
-when a login-walled platform only needs a single session cookie for the
-whole check. That breaks down the moment one domain needs **several**
-different sessions at once — e.g. auditing placements posted from 30
-different social-media accounts on the same platform, where each
-placement's row needs its *own* Cookie, not one shared across all 30.
-`--accounts-file` is for exactly that case.
-
-**When to use which:**
-
-| | One session per whole run/domain | Many sessions, one per row |
-|---|---|---|
-| Use | `-H` / `--headers-file` | `--accounts-file` |
-| Scope | Global, or one platform domain | One `account_id`, referenced per row |
-| Input file | Unaffected | Rows prefixed `account_id|URL` (TXT), or an `account_id` column (CSV) / `"account_id"` key (JSON) |
+Some login-walled platforms need more than one session at once -- e.g.
+auditing placements posted from 30 different social-media accounts on
+the same platform, where each placement's row needs its *own* Cookie,
+not one shared session for the whole run. `--accounts-file` is a
+registry of `account_id -> headers`, paired with input rows prefixed
+`account_id|URL` (or an `account_id` column/key for CSV/JSON).
 
 **`accounts.txt` format** — `account_id|Name: Value`, one header per
 line. Repeat the same `account_id` on further lines to register more
@@ -154,6 +155,54 @@ commented out, so this exact command errors with a "missing account_id"
 message until you fill in real, uncommented entries for `account_001`/
 `account_002` in your own copy.)
 
+## Presets (`--config`)
+
+`bl-check`/`bl-chain` read presets from the *same* `redirecthunter.yaml`
+file `scan` already auto-discovers, under their own top-level keys
+(`bl_check:` / `bl_chain:`) so a project only ever needs one config file
+to remember, not one per command. This means long-lived flags -- `-d`,
+`--accounts-file`, `-c`, and the rest -- don't need retyping on every
+run.
+
+```yaml
+bl_check:
+  domain: medilana.id
+  accounts_file: examples/bl-check-accounts.txt
+  concurrency: 8
+  exact: false
+  strict: false
+
+bl_chain:
+  domain: medilana.id
+  accounts_file: examples/bl-check-accounts.txt
+  require_confirmed_parent: false
+```
+
+Every `BacklinkCheckConfig`/`BacklinkChainConfig` field can be preset
+this way: `domain`, `accounts_file`, `concurrency`, `timeout`, `exact`,
+`strict`, `user_agent`, `browser`, `headed`, `nav_timeout`,
+`render_wait`, `label`, `database`. `bl-chain` additionally accepts
+`require_confirmed_parent`; `tier_paths` is never read from YAML --
+tier order is always given on the command line.
+
+**Priority: CLI flag > config file > built-in default.** A `-d` on the
+command line always wins over `bl_check.domain`/`bl_chain.domain` in the
+file, which in turn wins over the field's own default.
+
+```bash
+# Auto-discovered redirecthunter.yaml in the current directory:
+redirecthunter bl-check backlinks.txt
+
+# Explicit path:
+redirecthunter bl-check backlinks.txt --config path/to/redirecthunter.yaml
+
+# CLI overrides the file's domain, everything else still comes from it:
+redirecthunter bl-check backlinks.txt -d other-domain.id --config path/to/redirecthunter.yaml
+```
+
+See `examples/redirecthunter.yaml` for a complete, working example of
+both sections.
+
 ## Chained/tiered audits (`redirecthunter bl-chain`)
 
 Backlink audits are often structured in **tiers** (a "link pyramid"):
@@ -191,8 +240,8 @@ separate `bl-chain-show`/`bl-chain-export`. `bl-chain` itself prints a
 combined summary table across all tiers when the run finishes.
 
 `bl-chain` shares `bl-check`'s `--browser`/`--headed`/`--exact`/
-`--strict`/`-H`/`--headers-file`/`--accounts-file` options, applied per
-tier — one `--accounts-file` registry is shared across every tier (see
+`--strict`/`--accounts-file`/`--config` options, applied per tier — one
+`--accounts-file` registry is shared across every tier (see
 [Account-scoped sessions](#account-scoped-sessions-accounts-file)
 above). See [`CLI_REFERENCE.md#bl-chain`](./CLI_REFERENCE.md#bl-chain)
 for the full flag reference.

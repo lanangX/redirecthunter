@@ -6,8 +6,23 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- `bl-check`/`bl-chain`'s `-H`/`--header` and `--headers-file` flags
+  (global and per-domain-scoped session headers). `--accounts-file` is
+  now the only session mechanism for these commands -- see
+  `docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file`.
+  `BacklinkCheckConfig`/`BacklinkChainConfig` no longer have
+  `extra_headers`/`domain_headers` fields; `examples/bl-check-headers.txt`
+  removed.
+
 ### Added
 
+- `bl-check`/`bl-chain --config` -- read presets (domain, accounts_file,
+  concurrency, timeout, exact, strict, user_agent, browser, headed,
+  nav_timeout, render_wait, label, database) from `redirecthunter.yaml`'s
+  new `bl_check:`/`bl_chain:` sections, same auto-discovery as `scan`
+  already has. Priority: CLI flag > config file > built-in default.
 - Multi-target per-row override for `bl-check`/`bl-chain` input files: a
   row's `|target` field (TXT), `target` column (CSV), or `"target"` key
   (JSON) may now be a `;`-separated list --

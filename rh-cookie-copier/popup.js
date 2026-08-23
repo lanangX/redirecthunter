@@ -14,7 +14,7 @@
  *
  * Two directions:
  *   - "Copy from this tab": read this tab's cookies -> editable text ->
- *     clipboard, to paste into a bl-check headers file.
+ *     clipboard, to paste into a bl-check --accounts-file.
  *   - "Apply to this tab": paste a cookie line (e.g. one you copied on a
  *     *different* browser) -> parsed -> written into this browser's
  *     cookie jar for this site, so you can just reload the page and look
@@ -68,8 +68,7 @@ function sanitizeAccountId(raw) {
  * one full account_id, e.g. domain "marketplace.whmcs.com" + username
  * "jasapasangngt" -> "marketplace-whmcs-com-jasapasangngt". Lets the user
  * type just the short, memorable part (the username) while the domain --
- * already known from the current tab -- is filled in for them, the same
- * way "Scope domain" is auto-filled for the "scoped" format. Returns ""
+ * already known from the current tab -- is filled in for them. Returns ""
  * if either half is missing/unusable, so callers can treat that as
  * "not ready yet" without guessing.
  */
@@ -80,11 +79,9 @@ function computeAccountId(domainRaw, userRaw) {
   return `${domainPart}-${userPart}`.replace(/-+/g, "-");
 }
 
-function buildLine(format, domain, accountId, cookieValue) {
+function buildLine(format, accountId, cookieValue) {
   if (format === "raw") return cookieValue;
-  if (format === "global") return `Cookie: ${cookieValue}`;
-  if (format === "account") return `${accountId}|Cookie: ${cookieValue}`;
-  return `${domain}|Cookie: ${cookieValue}`;
+  return `${accountId}|Cookie: ${cookieValue}`;
 }
 
 /**
@@ -139,8 +136,6 @@ function switchTab(which) {
 
 async function main() {
   const domainBox = document.getElementById("domainBox");
-  const domainInput = document.getElementById("domainInput");
-  const domainRow = document.getElementById("domainRow");
   const accountDomainInput = document.getElementById("accountDomainInput");
   const accountUserInput = document.getElementById("accountUserInput");
   const accountIdPreview = document.getElementById("accountIdPreview");
@@ -175,11 +170,9 @@ async function main() {
   const hostname = url.hostname;
 
   domainBox.innerHTML = `Current tab: <strong>${hostname}</strong>`;
-  domainInput.value = hostname;
-  accountDomainInput.value = hostname; // auto-filled, same as domainInput -- still editable
+  accountDomainInput.value = hostname; // auto-filled from the current tab, still editable
 
   formatSelect.addEventListener("change", () => {
-    domainRow.style.display = formatSelect.value === "scoped" ? "block" : "none";
     accountRow.style.display = formatSelect.value === "account" ? "block" : "none";
   });
 
@@ -234,8 +227,7 @@ async function main() {
       cookieCount.textContent = `${cookies.length} cookie(s) found for this request.`;
 
       const cookieValue = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-      const scopeDomain = domainInput.value.trim() || hostname;
-      const line = buildLine(formatSelect.value, scopeDomain, accountId, cookieValue);
+      const line = buildLine(formatSelect.value, accountId, cookieValue);
 
       preview.value = line;
       preview.style.display = "block";

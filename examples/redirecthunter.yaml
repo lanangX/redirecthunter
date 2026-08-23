@@ -39,3 +39,16 @@ extra_headers:
 
 # Storage
 database_path: redirecthunter.db
+
+# bl-check / bl-chain presets (same file scan uses, own top-level key)
+bl_check:
+  domain: medilana.id
+  accounts_file: examples/bl-check-accounts.txt
+  concurrency: 8
+  exact: false
+  strict: false
+
+bl_chain:
+  domain: medilana.id
+  accounts_file: examples/bl-check-accounts.txt
+  require_confirmed_parent: false

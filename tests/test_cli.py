@@ -845,6 +845,78 @@ class TestBacklinkCheckCommands:
         assert result.exit_code == 1
         assert "--headed only makes sense with --browser" in result.output
 
+    def test_bl_check_domain_from_config_file(self, tmp_path: Path) -> None:
+        urls_file = self._write_backlink_urls(tmp_path)
+        db_path = tmp_path / "bl.db"
+        config_file = tmp_path / "redirecthunter.yaml"
+        config_file.write_text("bl_check:\n  domain: medilana.id\n")
+
+        with respx.mock(assert_all_called=True) as mock:
+            mock.get("https://source.test/has-link").mock(
+                return_value=httpx.Response(
+                    200,
+                    headers={"Content-Type": "text/html"},
+                    text='<html><body><a href="https://medilana.id/x">link</a></body></html>',
+                )
+            )
+            mock.get("https://source.test/no-link").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            mock.get("https://source.test/text-only").mock(
+                return_value=httpx.Response(
+                    200, headers={"Content-Type": "text/html"}, text="<html><body>see medilana.id</body></html>"
+                )
+            )
+            # No -d/--domain on the CLI -- domain must come from the
+            # config file's bl_check: section.
+            result = runner.invoke(
+                app,
+                [
+                    "bl-check",
+                    str(urls_file),
+                    "--config",
+                    str(config_file),
+                    "--database",
+                    str(db_path),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "domain=medilana.id" in result.output
+
+    def test_bl_check_cli_domain_overrides_config_file(self, tmp_path: Path) -> None:
+        urls_file = self._write_backlink_urls(tmp_path)
+        db_path = tmp_path / "bl.db"
+        config_file = tmp_path / "redirecthunter.yaml"
+        config_file.write_text("bl_check:\n  domain: from-yaml.id\n")
+
+        with respx.mock(assert_all_called=True) as mock:
+            mock.get("https://source.test/has-link").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            mock.get("https://source.test/no-link").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            mock.get("https://source.test/text-only").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "bl-check",
+                    str(urls_file),
+                    "-d",
+                    "from-cli.id",
+                    "--config",
+                    str(config_file),
+                    "--database",
+                    str(db_path),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "domain=from-cli.id" in result.output
+
     def test_bl_check_captures_target_rel_and_robots_columns(self, tmp_path: Path) -> None:
         """Regression test for the target=_blank / robots-tag feature request."""
         urls_file = tmp_path / "backlinks.txt"
@@ -1083,4 +1155,73 @@ class TestBlChainCommand:
         assert result.exit_code == 0, result.output
         assert "Backlink Chain Summary" in result.output
         assert "chain_id:" in result.output
+        assert db_path.exists()
+
+    def test_bl_chain_domain_from_config_file(self, tmp_path: Path) -> None:
+        tier1 = tmp_path / "tier1.txt"
+        tier1.write_text("https://tier1.test/page\n")
+        tier2 = tmp_path / "tier2.txt"
+        tier2.write_text("https://tier2.test/page\n")
+        db_path = tmp_path / "chain.db"
+        config_file = tmp_path / "redirecthunter.yaml"
+        config_file.write_text("bl_chain:\n  domain: medilana.id\n")
+
+        with respx.mock(assert_all_called=True) as mock:
+            mock.get("https://tier1.test/page").mock(
+                return_value=httpx.Response(
+                    200,
+                    headers={"Content-Type": "text/html"},
+                    text='<html><body><a href="https://medilana.id/x">link</a></body></html>',
+                )
+            )
+            mock.get("https://tier2.test/page").mock(
+                return_value=httpx.Response(
+                    200,
+                    headers={"Content-Type": "text/html"},
+                    text='<html><body><a href="https://tier1.test/other">link</a></body></html>',
+                )
+            )
+            # No -d/--domain on the CLI -- domain must come from the
+            # config file's bl_chain: section.
+            result = runner.invoke(
+                app,
+                [
+                    "bl-chain", str(tier1), str(tier2),
+                    "--config", str(config_file),
+                    "--database", str(db_path),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Backlink Chain Summary" in result.output
+        assert db_path.exists()
+
+    def test_bl_chain_cli_domain_overrides_config_file(self, tmp_path: Path) -> None:
+        tier1 = tmp_path / "tier1.txt"
+        tier1.write_text("https://tier1.test/page\n")
+        tier2 = tmp_path / "tier2.txt"
+        tier2.write_text("https://tier2.test/page\n")
+        db_path = tmp_path / "chain.db"
+        config_file = tmp_path / "redirecthunter.yaml"
+        config_file.write_text("bl_chain:\n  domain: from-yaml.id\n")
+
+        with respx.mock(assert_all_called=True) as mock:
+            mock.get("https://tier1.test/page").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            mock.get("https://tier2.test/page").mock(
+                return_value=httpx.Response(200, headers={"Content-Type": "text/html"}, text="<html><body>nothing</body></html>")
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "bl-chain", str(tier1), str(tier2),
+                    "-d", "from-cli.id",
+                    "--config", str(config_file),
+                    "--database", str(db_path),
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Backlink Chain Summary" in result.output
         assert db_path.exists()

@@ -155,19 +155,11 @@
   <div id="copyPanel" class="panel active">
     <label for="format">Copy format</label>
     <select id="format">
-      <option value="scoped" selected>Scoped line — domain|Cookie: ... (headers-file)</option>
-      <option value="account">Account line — account_id|Cookie: ... (accounts-file)</option>
-      <option value="global">Global line — Cookie: ...</option>
+      <option value="account" selected>Account line — account_id|Cookie: ... (accounts-file)</option>
       <option value="raw">Raw cookie value only</option>
     </select>
 
-    <div id="domainRow">
-      <label for="domainInput">Scope domain</label>
-      <input type="text" id="domainInput" placeholder="example.com">
-      <div class="hint">Paste this line into your <code>bl-check-headers.txt</code>.</div>
-    </div>
-
-    <div id="accountRow" style="display:none;">
+    <div id="accountRow">
       <label for="accountDomainInput">Account domain</label>
       <input type="text" id="accountDomainInput" placeholder="example.com">
 

@@ -568,21 +568,6 @@ class BacklinkCheckConfig(BaseModel):
     concurrency: int = Field(default=8, ge=1, le=500)
     timeout: float = Field(default=15.0, gt=0.0)
     user_agent: str = "Mozilla/5.0 (compatible; BacklinkChecker/1.0; +https://example.org/bot)"
-    #: Extra request headers, e.g. a manually-obtained `Cookie:` value for
-    #: pages that only serve their real content to a logged-in session
-    #: (see `looks_like_login_wall`). This is *not* a login flow -- there's
-    #: no username/password/form-submission here, just headers attached to
-    #: every request, the same "bring your own session cookie" model
-    #: `scan`/`crawl`'s `--header` already use. Applied in both httpx mode
-    #: (merged into the `httpx.AsyncClient` default headers) and
-    #: `--browser` mode (passed to the Playwright `BrowserContext`).
-    extra_headers: dict[str, str] | None = None
-    #: Per-domain-scoped headers, e.g. a different session cookie for each
-    #: of several login-walled platforms in one multi-platform backlink
-    #: list -- see `cli.py`'s `-H "domain.com|Name: Value"` syntax and
-    #: `backlink.resolve_domain_headers`. Keys are normalized domains;
-    #: unlike `extra_headers`, these are never sent to URLs on other hosts.
-    domain_headers: dict[str, dict[str, str]] | None = None
     database_path: Path = Field(default=Path("redirecthunter.db"))
     label: str | None = None
     #: Render with Playwright (needs the `redirecthunter[js]` extra)
@@ -659,8 +644,6 @@ class BacklinkChainConfig(BaseModel):
     concurrency: int = Field(default=8, ge=1, le=500)
     timeout: float = Field(default=15.0, gt=0.0)
     user_agent: str = "Mozilla/5.0 (compatible; BacklinkChecker/1.0; +https://example.org/bot)"
-    extra_headers: dict[str, str] | None = None
-    domain_headers: dict[str, dict[str, str]] | None = None
     database_path: Path = Field(default=Path("redirecthunter.db"))
     label: str | None = None
     browser: bool = False

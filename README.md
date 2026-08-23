@@ -155,7 +155,7 @@ Python distribution — see `[tool.setuptools.packages.find]` in
 
 - **[`rh-cookie-copier/`](rh-cookie-copier/)** — a small cross-browser
   extension (Chrome/Edge/Brave/Opera/Firefox) that copies a site's session
-  cookies as a ready-to-paste `bl-check --headers-file` line, and can also
+  cookies as a ready-to-paste `bl-check --accounts-file` line, and can also
   apply a pasted cookie line to the current browser tab so a login-walled
   backlink can be checked visually. See `rh-cookie-copier/README.md`.
 

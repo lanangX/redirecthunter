@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from redirecthunter.models import HTTPMethod, InputFormat, ScanConfig
+from redirecthunter.models import BacklinkChainConfig, BacklinkCheckConfig, HTTPMethod, InputFormat, ScanConfig
 
 #: Filenames auto-discovered in the current working directory when the
 #: caller does not explicitly pass ``--config``.
@@ -226,6 +226,210 @@ def build_scan_config(
         raise ConfigError(f"Invalid configuration:\n{exc}") from exc
 
 
+def _load_bl_section(config_file: Path | None, section: str) -> dict[str, Any]:
+    """Load one ``bl_check:``/``bl_chain:`` nested section from ``redirecthunter.yaml``.
+
+    Both `bl-check` and `bl-chain` share the *same* config file `scan`
+    already auto-discovers -- rather than a separate file -- under their
+    own top-level key, so a project only ever has one config file to
+    remember, not one per command. An absent section (file not found, or
+    found but without this key) resolves to ``{}``, same as
+    :func:`load_yaml_config`'s empty-file contract.
+    """
+    resolved_path = discover_config_file(config_file)
+    if resolved_path is None:
+        return {}
+    data = load_yaml_config(resolved_path)
+    section_data = data.get(section, {})
+    if section_data is None:
+        return {}
+    if not isinstance(section_data, dict):
+        raise ConfigError(f"'{section}:' in {resolved_path} must be a YAML mapping.")
+    return section_data
+
+
+def _resolve_accounts_file(merged: dict[str, Any]) -> Path | None:
+    """Pop and validate ``accounts_file`` out of a merged bl-check/bl-chain config dict.
+
+    Not a :class:`~redirecthunter.models.BacklinkCheckConfig` field itself
+    (that model has no ``accounts_file`` field) -- it names a file to be
+    *read* at run time into an ``account_id -> headers`` registry, so it's
+    resolved and returned separately from the persisted config, exactly
+    like the CLI's own ``--accounts-file`` never becomes a config field.
+    """
+    raw = merged.pop("accounts_file", None)
+    if raw is None:
+        return None
+    resolved = Path(raw)
+    if not resolved.is_file():
+        raise ConfigError(f"--accounts-file not found: {resolved}")
+    return resolved
+
+
+def _apply_exact_strict(merged: dict[str, Any]) -> None:
+    """Translate the CLI/YAML-facing ``exact``/``strict`` keys into the model's actual fields.
+
+    ``redirecthunter.yaml``'s ``bl_check:``/``bl_chain:`` sections (and the
+    CLI's own ``--exact``/``--strict`` flags) speak the same vocabulary as
+    each other -- the model fields (``allow_subdomains``, ``check_indirect``)
+    are inverted booleans for historical/internal reasons, so this is the
+    one place that translation happens rather than repeating ``not exact``/
+    ``not strict`` at every call site.
+    """
+    exact_flag = bool(merged.pop("exact", False))
+    strict_flag = bool(merged.pop("strict", False))
+    merged["allow_subdomains"] = not exact_flag
+    merged["check_indirect"] = not strict_flag
+
+
+def build_backlink_check_config(
+    *,
+    input_path: Path,
+    input_format: InputFormat | None = None,
+    domain: str | None = None,
+    concurrency: int | None = None,
+    timeout: float | None = None,
+    exact: bool | None = None,
+    strict: bool | None = None,
+    user_agent: str | None = None,
+    accounts_file: Path | None = None,
+    browser: bool | None = None,
+    headed: bool | None = None,
+    nav_timeout: float | None = None,
+    render_wait: float | None = None,
+    label: str | None = None,
+    database_path: Path | None = None,
+    config_file: Path | None = None,
+) -> tuple[BacklinkCheckConfig, Path | None]:
+    """Resolve a ``bl-check`` run's config: CLI flags > ``bl_check:`` section > built-in defaults.
+
+    Mirrors :func:`build_scan_config`'s layering (a ``None`` CLI argument
+    means "not explicitly set on the CLI", letting the YAML section or the
+    model's own field default take over), scoped to ``redirecthunter.yaml``'s
+    ``bl_check:`` key so `scan` and `bl-check` presets can live in the same
+    file without their option names colliding.
+
+    Returns ``(config, accounts_file)`` -- ``accounts_file`` is resolved
+    and validated here (CLI > YAML, existence-checked) but returned
+    separately since it is not itself a :class:`BacklinkCheckConfig` field;
+    see :func:`_resolve_accounts_file`.
+
+    Raises:
+        ConfigError: If the config file is invalid, no domain was supplied
+            by either layer, ``accounts_file`` doesn't exist, or the merged
+            configuration fails Pydantic validation.
+    """
+    merged: dict[str, Any] = dict(_load_bl_section(config_file, "bl_check"))
+    merged.update(
+        _strip_none(
+            {
+                "domain": domain,
+                "concurrency": concurrency,
+                "timeout": timeout,
+                "exact": exact,
+                "strict": strict,
+                "user_agent": user_agent,
+                "accounts_file": accounts_file,
+                "browser": browser,
+                "headed": headed,
+                "nav_timeout": nav_timeout,
+                "render_wait": render_wait,
+                "label": label,
+                "database_path": database_path,
+            }
+        )
+    )
+
+    resolved_accounts_file = _resolve_accounts_file(merged)
+    _apply_exact_strict(merged)
+
+    if not merged.get("domain"):
+        raise ConfigError(
+            "Missing target domain: pass -d/--domain, or set 'domain:' under 'bl_check:' "
+            "in redirecthunter.yaml."
+        )
+
+    if merged.get("concurrency") is None:
+        merged["concurrency"] = 4 if merged.get("browser") else 8
+
+    merged["input_path"] = input_path
+    merged["input_format"] = input_format or infer_input_format(input_path)
+
+    try:
+        return BacklinkCheckConfig.model_validate(merged), resolved_accounts_file
+    except ValidationError as exc:
+        raise ConfigError(f"Invalid configuration:\n{exc}") from exc
+
+
+def build_backlink_chain_config(
+    *,
+    tier_paths: list[Path],
+    domain: str | None = None,
+    require_confirmed_parent: bool | None = None,
+    concurrency: int | None = None,
+    timeout: float | None = None,
+    exact: bool | None = None,
+    strict: bool | None = None,
+    user_agent: str | None = None,
+    accounts_file: Path | None = None,
+    browser: bool | None = None,
+    headed: bool | None = None,
+    nav_timeout: float | None = None,
+    render_wait: float | None = None,
+    label: str | None = None,
+    database_path: Path | None = None,
+    config_file: Path | None = None,
+) -> tuple[BacklinkChainConfig, Path | None]:
+    """The ``bl-chain`` counterpart of :func:`build_backlink_check_config`.
+
+    Same layering (CLI > ``bl_chain:`` section > default) and the same
+    ``(config, accounts_file)`` return shape; see that function's
+    docstring for the shared reasoning. ``tier_paths`` always comes from
+    the CLI's positional arguments -- never YAML -- since tier order is a
+    per-invocation choice, not a standing preset.
+    """
+    merged: dict[str, Any] = dict(_load_bl_section(config_file, "bl_chain"))
+    merged.update(
+        _strip_none(
+            {
+                "domain": domain,
+                "require_confirmed_parent": require_confirmed_parent,
+                "concurrency": concurrency,
+                "timeout": timeout,
+                "exact": exact,
+                "strict": strict,
+                "user_agent": user_agent,
+                "accounts_file": accounts_file,
+                "browser": browser,
+                "headed": headed,
+                "nav_timeout": nav_timeout,
+                "render_wait": render_wait,
+                "label": label,
+                "database_path": database_path,
+            }
+        )
+    )
+
+    resolved_accounts_file = _resolve_accounts_file(merged)
+    _apply_exact_strict(merged)
+
+    if not merged.get("domain"):
+        raise ConfigError(
+            "Missing root target domain: pass -d/--domain, or set 'domain:' under 'bl_chain:' "
+            "in redirecthunter.yaml."
+        )
+
+    if merged.get("concurrency") is None:
+        merged["concurrency"] = 4 if merged.get("browser") else 8
+
+    merged["tier_paths"] = tier_paths
+
+    try:
+        return BacklinkChainConfig.model_validate(merged), resolved_accounts_file
+    except ValidationError as exc:
+        raise ConfigError(f"Invalid configuration:\n{exc}") from exc
+
+
 __all__ = [
     "ConfigError",
     "DEFAULT_CONFIG_FILENAMES",
@@ -233,4 +437,6 @@ __all__ = [
     "load_yaml_config",
     "infer_input_format",
     "build_scan_config",
+    "build_backlink_check_config",
+    "build_backlink_chain_config",
 ]

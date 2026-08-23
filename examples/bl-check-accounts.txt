@@ -4,11 +4,10 @@
 # Usage:
 #   redirecthunter bl-check backlinks.txt -d medilana.id --accounts-file this-file.txt
 #
-# Use this instead of (or alongside) -H/--headers-file when ONE domain
-# needs MANY different sessions -- e.g. checking placements posted from
-# 30 different social-media accounts on the same platform, where each
-# placement needs its own Cookie, not one shared session for the whole
-# run. See docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file.
+# Use this when ONE domain needs MANY different sessions -- e.g. checking
+# placements posted from 30 different social-media accounts on the same
+# platform, where each placement needs its own Cookie. See
+# docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file.
 #
 # Format: one header per line, "account_id|Name: Value". Repeat the same
 # account_id on further lines to register more than one header for it:
@@ -33,24 +32,20 @@
 # fallback to an anonymous request.
 #
 # --------------------------------------------------------------------------
-# HOW TO GET THE RIGHT COOKIE VALUE for each account (same procedure as
-# -H/--headers-file, repeated once per account you're registering here):
+# HOW TO GET THE RIGHT COOKIE VALUE for each account:
 #
-#   1. In a real browser, log in normally as that account until you're on
-#      a page that only shows up when authenticated.
-#   2. Open DevTools -> the *Network* tab (not Application/Storage/Cookies).
-#   3. Reload the page.
-#   4. Click the top document request (status 200) in the request list.
-#   5. Look at "Request Headers" and find the line that starts with
-#      "Cookie:". Copy everything after "Cookie: " verbatim.
-#   6. Paste it as that account's value below.
+# Recommended: use the bundled rh-cookie-copier browser extension
+# (../rh-cookie-copier) -- log in as that account, click the extension
+# icon, pick "Account line", type a username/label, and it copies a
+# ready-to-paste "account_id|Cookie: ..." line straight to your
+# clipboard. See rh-cookie-copier/README.md for the (under-a-minute)
+# local install steps. Repeat once per account.
 #
-# The Network tab is the right place, not Application > Cookies: the
-# Application panel lists every cookie stored for the origin (analytics,
-# ad/consent cookies, unrelated widgets) with no reliable way to tell
-# which one is "the" session cookie. The Cookie header on an actual
-# outgoing request is exactly what the browser decided to send -- copy
-# that and you don't need to guess.
+# Fallback (no extension): open DevTools' *Network* tab (not
+# Application/Storage/Cookies), reload the page, click the top document
+# request, and copy everything after "Cookie:" in its Request Headers --
+# that's exactly what the browser sends, so you don't need to guess
+# which individual cookie name is "the" session cookie.
 #
 # Keep this file OUT of version control once you fill in real values --
 # these are live session credentials, one set per account. Treat it like

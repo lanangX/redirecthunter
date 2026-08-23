@@ -1,7 +1,7 @@
-# Example tier-1 input for `redirecthunter bl-chain`. Tier 1 is checked
-# against -d/--domain directly, exactly like a plain `bl-check` -- these
-# are pages that should link straight to the root domain being audited
-# (e.g. -d example-root.com). All domains here are dummy placeholders.
+# Example tier-1 input for `redirecthunter bl-chain`. Same row shapes as
+# bl-check (URL, URL|target, account_id|URL) -- tier 1 is checked directly
+# against -d/--domain, exactly like a plain `bl-check` run. All domains
+# here are dummy placeholders.
 #
 # Usage:
 #   redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt \
@@ -10,8 +10,7 @@
 https://guest-post-site-a.example.com/article-1
 https://guest-post-site-b.example.com/roundup
 
-# Account-scoped row -- checked using the session registered for
-# account_001 in --accounts-file, same as bl-check:
+# Account-scoped row, same registry as bl-check:
 account_001|https://social-platform.example.com/profile/brand-1
 
 https://directory-listing.example.com/company/example-root

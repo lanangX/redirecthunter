@@ -25,7 +25,6 @@ from redirecthunter.backlink import (
     normalize_domain,
     normalize_hostname,
     resolve_account_headers,
-    resolve_effective_headers,
     run_backlink_checks,
     run_backlink_checks_browser,
 )
@@ -316,39 +315,6 @@ class TestResolveAccountHeaders:
 
     def test_no_account_headers_registry_returns_none(self) -> None:
         assert resolve_account_headers("https://a.com", {"https://a.com": "account_001"}, None) is None
-
-
-class TestResolveEffectiveHeaders:
-    def test_account_header_overrides_domain_header_same_key(self) -> None:
-        merged = resolve_effective_headers(
-            "https://a.com",
-            {"a.com": {"Cookie": "domain-cookie"}},
-            {"https://a.com": "account_001"},
-            {"account_001": {"Cookie": "account-cookie"}},
-        )
-        assert merged == {"Cookie": "account-cookie"}
-
-    def test_non_conflicting_domain_header_key_is_preserved(self) -> None:
-        merged = resolve_effective_headers(
-            "https://a.com",
-            {"a.com": {"Cookie": "domain-cookie", "X-Domain": "keep-me"}},
-            {"https://a.com": "account_001"},
-            {"account_001": {"Cookie": "account-cookie"}},
-        )
-        assert merged == {"Cookie": "account-cookie", "X-Domain": "keep-me"}
-
-    def test_url_without_account_gets_only_domain_headers(self) -> None:
-        merged = resolve_effective_headers(
-            "https://public.com",
-            {"public.com": {"X-Domain": "keep-me"}},
-            {"https://a.com": "account_001"},
-            {"account_001": {"Cookie": "account-cookie"}},
-        )
-        assert merged == {"X-Domain": "keep-me"}
-
-    def test_neither_layer_contributes_returns_none(self) -> None:
-        merged = resolve_effective_headers("https://a.com", None, None, None)
-        assert merged is None
 
 
 class TestRunBacklinkChecksAccountIsolation:

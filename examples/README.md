@@ -72,45 +72,33 @@ links to any one of them. See
 [`docs/CLI_REFERENCE.md`](../docs/CLI_REFERENCE.md#bl-check) for the
 full syntax, including how blank/whitespace-only entries are handled.
 
-### Reusable header/cookie sets for login-walled pages
+### Getting session cookies for login-walled pages
 
 Some URLs in a backlink list only show their real content to a logged-in
 session (LinkedIn, Facebook, vendor-marketplace profile/group pages, etc).
-`bl-check`'s `-H`/`--header` accepts a domain-scoped cookie
-(`-H "linkedin.com|Cookie: li_at=..."`) so it's sent only to that platform,
-never leaked to the rest of the (usually much larger) URL list.
+`--accounts-file` is how `bl-check`/`bl-chain` send the right session
+cookie only to the account/platform that needs it -- see the next
+section for the file format.
 
-Instead of retyping `-H` on every run, put the same lines in a file and pass
-`--headers-file`:
-
-```bash
-redirecthunter bl-check backlinks.txt -d medilana.id --headers-file my-headers.txt
-```
-
-See [`examples/bl-check-headers.txt`](bl-check-headers.txt) for the exact
-file format and, importantly, **how to copy the right cookie value** --
-copy the literal `Cookie:` request header from DevTools' *Network* tab
-(not individual cookie names from the Application/Storage panel, which
-mixes your session cookie in with unrelated analytics/ad cookies you can't
-tell apart by name alone). Keep your filled-in copy out of version control;
-it holds real session credentials.
-
-For an even faster path than DevTools, the bundled
-[`rh-cookie-copier/`](../rh-cookie-copier) browser extension does this in
-one click: open the logged-in site, click the extension icon, and a
-ready-to-paste `domain|Cookie: ...` line lands on your clipboard. Works on
-Chrome, Edge, Brave, Opera, and Firefox -- see `rh-cookie-copier/README.md`
-for the (under-a-minute) local install steps.
+The recommended way to get the cookie value is the bundled
+[`rh-cookie-copier/`](../rh-cookie-copier) browser extension: open the
+logged-in site, click the extension icon, pick "Account line", type a
+short account username/label, and a ready-to-paste
+`account_id|Cookie: ...` line lands on your clipboard. Works on Chrome,
+Edge, Brave, Opera, and Firefox -- see `rh-cookie-copier/README.md` for
+the (under-a-minute) local install steps. Without the extension, copy
+the `Cookie:` value from DevTools' *Network* tab instead (see
+[`examples/bl-check-accounts.txt`](bl-check-accounts.txt) for the exact
+fallback steps).
 
 ### Account-scoped sessions (`--accounts-file`)
 
-`-H`/`--headers-file` above cover one session per whole run (or per
-platform domain). That's not enough when the *same* domain needs
-**several** different sessions at once -- e.g. auditing placements
-posted from 30 different accounts on the same platform, where each
-placement's row needs its own Cookie. `--accounts-file` is for that
-case: a registry of `account_id -> headers`, paired with input rows
-prefixed `account_id|URL` (or an `account_id` column/key for CSV/JSON).
+`--accounts-file` is for when the *same* domain needs **several**
+different sessions at once -- e.g. auditing placements posted from 30
+different accounts on the same platform, where each placement's row
+needs its own Cookie. It's a registry of `account_id -> headers`,
+paired with input rows prefixed `account_id|URL` (or an `account_id`
+column/key for CSV/JSON).
 
 ```bash
 redirecthunter bl-check examples/backlink-sample.txt -d medilana.id \
@@ -129,12 +117,11 @@ URL with its own `|target` override, and `account_id|URL` rows
 (including the same account reused across rows, and two different
 accounts on the same platform domain).
 [`examples/bl-check-accounts.txt`](bl-check-accounts.txt) is the
-matching registry template -- same cookie-copying guidance as
-`bl-check-headers.txt` above, just keyed by `account_id` instead of
-domain. A row referencing an `account_id` that isn't in the registry is
-a hard error (exit code 1, listing every missing `account_id`) --
-`bl-check`/`bl-chain` never silently fall back to an anonymous request.
-See
+matching registry template, with cookie-copying guidance (extension
+first, DevTools as fallback). A row referencing an `account_id` that
+isn't in the registry is a hard error (exit code 1, listing every
+missing `account_id`) -- `bl-check`/`bl-chain` never silently fall back
+to an anonymous request. See
 [`docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file`](../docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file)
 for the full syntax and behavior.
 
@@ -167,10 +154,14 @@ derived from the previous tier.
 
 ## Sample configuration
 
-`redirecthunter.yaml` demonstrates every configurable field. Use it directly:
+`redirecthunter.yaml` demonstrates every configurable field, including
+`bl_check:`/`bl_chain:` presets. Use it directly:
 
 ```bash
 redirecthunter scan examples/urls.txt --config examples/redirecthunter.yaml
+redirecthunter bl-check examples/backlink-sample.txt --config examples/redirecthunter.yaml
+redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt \
+  --config examples/redirecthunter.yaml
 ```
 
 Or copy it to your project root as `redirecthunter.yaml` for automatic
@@ -179,10 +170,14 @@ discovery (no `--config` flag needed):
 ```bash
 cp examples/redirecthunter.yaml ./redirecthunter.yaml
 redirecthunter scan examples/urls.txt   # config auto-discovered
+redirecthunter bl-check examples/backlink-sample.txt   # domain/accounts_file etc. from bl_check:
 ```
 
 Remember: CLI flags always override the YAML file, which always overrides
-built-in defaults.
+built-in defaults -- so `-d other-domain.id` on the command line still wins
+over `bl_check.domain` in the file. See
+[`docs/BACKLINK_GUIDE.md#presets---config`](../docs/BACKLINK_GUIDE.md#presets---config)
+for the full field list.
 
 ## A complete walkthrough
 

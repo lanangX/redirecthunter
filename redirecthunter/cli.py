@@ -77,7 +77,13 @@ from redirecthunter.backlink import (
     run_backlink_checks,
     run_backlink_checks_browser,
 )
-from redirecthunter.config import ConfigError, build_scan_config, infer_input_format
+from redirecthunter.config import (
+    ConfigError,
+    build_backlink_chain_config,
+    build_backlink_check_config,
+    build_scan_config,
+    infer_input_format,
+)
 from redirecthunter.crawler import Crawler, CrawlerError
 from redirecthunter.database import Database, DatabaseError
 from redirecthunter.engine import Engine
@@ -85,7 +91,6 @@ from redirecthunter.export import Exporter, ExportError, ExportFilter
 from redirecthunter.loader import LoaderError, count_candidates, load_candidates
 from redirecthunter.logger import LogLevel, configure_logging, console, get_logger
 from redirecthunter.models import (
-    BacklinkChainConfig,
     BacklinkChainSummary,
     BacklinkCheckConfig,
     BacklinkCheckSummary,
@@ -155,53 +160,6 @@ def _parse_headers(raw_headers: list[str] | None) -> dict[str, str] | None:
     return parsed
 
 
-def _parse_scoped_headers(
-    raw_headers: list[str] | None,
-) -> tuple[dict[str, str] | None, dict[str, dict[str, str]] | None]:
-    """Parse ``bl-check``'s ``-H`` values into (global_headers, per_domain_headers).
-
-    Two forms, both repeatable and freely mixable in the same run:
-
-      - ``"Name: Value"``                 -> applied to every request (same as `_parse_headers`)
-      - ``"example.com|Name: Value"``     -> applied only to requests whose *URL's own host*
-                                              matches ``example.com`` (or a subdomain of it)
-
-    This exists because a bulk backlink list is almost always a mix of many
-    different platforms, and only a handful are actually login-walled --
-    sending one platform's session `Cookie` to every other host in the same
-    run would both do nothing useful there *and* leak that cookie to
-    unrelated third parties. Scoping lets one `bl-check` run carry a
-    different cookie per login-walled domain while leaving every other
-    (publicly viewable) URL in the same file untouched.
-    """
-    if not raw_headers:
-        return None, None
-
-    global_headers: dict[str, str] = {}
-    domain_headers: dict[str, dict[str, str]] = {}
-
-    for entry in raw_headers:
-        domain_part, sep, rest = entry.partition("|")
-        if sep and ":" in rest and " " not in domain_part.strip() and "." in domain_part:
-            # Scoped form: "example.com|Name: Value"
-            domain = normalize_domain(domain_part.strip())
-            name, _, value = rest.partition(":")
-            domain_headers.setdefault(domain, {})[name.strip()] = value.strip()
-            continue
-
-        # Unscoped form: "Name: Value" (applies to every request)
-        if ":" not in entry:
-            console.print(
-                f"[yellow]Ignoring malformed --header value (expected 'Name: Value' or "
-                f"'domain.com|Name: Value'): {entry}[/yellow]"
-            )
-            continue
-        name, _, value = entry.partition(":")
-        global_headers[name.strip()] = value.strip()
-
-    return (global_headers or None), (domain_headers or None)
-
-
 def _parse_account_headers(raw_lines: list[str] | None) -> tuple[dict[str, dict[str, str]], list[str]]:
     """Parse ``--accounts-file`` lines into an ``account_id -> headers`` registry.
 
@@ -214,8 +172,7 @@ def _parse_account_headers(raw_lines: list[str] | None) -> tuple[dict[str, dict[
     account -- this is how one account registers several headers
     (``Cookie``, ``User-Agent``, ``Referer``, ...), not an error. If the
     same ``account_id`` *and* the same header ``Name`` both repeat, the
-    later line wins (last-value-wins), matching ``_parse_scoped_headers``'s
-    existing behavior for domain-scoped headers -- deliberate, not a bug.
+    later line wins (last-value-wins) -- deliberate, not a bug.
 
     A bare ``account_id|`` line (nothing after the ``|``) explicitly
     registers that account with zero headers -- distinct from the account
@@ -228,7 +185,7 @@ def _parse_account_headers(raw_lines: list[str] | None) -> tuple[dict[str, dict[
 
     Returns ``(registry, warnings)`` -- malformed lines are skipped and
     reported back as warnings rather than aborting the whole file, the
-    same tolerant style ``_parse_headers``/``_parse_scoped_headers`` use.
+    same tolerant style ``_parse_headers`` uses.
     """
     registry: dict[str, dict[str, str]] = {}
     warnings: list[str] = []
@@ -300,17 +257,11 @@ def _validate_account_references(
     return sorted(referenced - set(account_headers.keys()))
 
 
-def _read_header_lines_from_file(path: Path) -> list[str]:
-    """Read a `bl-check --headers-file`: one header per line, same syntax as `-H`.
+def _read_lines_from_file(path: Path) -> list[str]:
+    """Read a `bl-check --accounts-file`: one ``account_id|Name: Value`` line per line.
 
     Same tolerant, `#`-comment/blank-line-skipping convention as the URL
-    input loader (`examples/urls.txt`) -- lets a user keep a reusable
-    ``headers.txt`` (per project, per client, whatever) instead of retyping
-    every `-H "domain|Cookie: ..."` on the command line each run. Values
-    from `--headers-file` and any `-H` given on the same invocation are
-    simply concatenated (file first) and parsed together by
-    `_parse_scoped_headers` -- CLI `-H` doesn't override file entries for
-    the same header/domain, it just adds more.
+    input loader (`examples/urls.txt`), parsed by `_parse_account_headers`.
     """
     lines: list[str] = []
     for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -2378,8 +2329,6 @@ async def _run_backlink_check(
                         user_agent=config.user_agent,
                         headed=config.headed,
                         block_resources=config.block_resources,
-                        extra_headers=config.extra_headers,
-                        domain_headers=config.domain_headers,
                         per_url_targets=per_url_targets,
                         per_url_account_id=per_url_account_id,
                         account_headers=account_headers,
@@ -2394,8 +2343,6 @@ async def _run_backlink_check(
                         allow_subdomains=config.allow_subdomains,
                         check_indirect=config.check_indirect,
                         user_agent=config.user_agent,
-                        extra_headers=config.extra_headers,
-                        domain_headers=config.domain_headers,
                         per_url_targets=per_url_targets,
                         per_url_account_id=per_url_account_id,
                         account_headers=account_headers,
@@ -2438,8 +2385,14 @@ def bl_check(
         typer.Argument(exists=True, dir_okay=False, help="TXT/CSV/JSON/SQLite file of URLs to check."),
     ],
     domain: Annotated[
-        str, typer.Option("-d", "--domain", help="Target domain to look for, e.g. medilana.id.")
-    ],
+        str | None,
+        typer.Option(
+            "-d",
+            "--domain",
+            help="Target domain to look for, e.g. medilana.id. Can also be set as bl_check.domain "
+            "in redirecthunter.yaml -- see --config.",
+        ),
+    ] = None,
     format: Annotated[  # noqa: A002
         InputFormat | None,
         typer.Option("--format", case_sensitive=False, help="Input file format. Inferred from extension if omitted."),
@@ -2456,52 +2409,21 @@ def bl_check(
         ),
     ] = None,
     timeout: Annotated[
-        float, typer.Option("-t", "--timeout", help="Per-request timeout, seconds. httpx mode only.")
-    ] = 15.0,
+        float | None, typer.Option("-t", "--timeout", help="Per-request timeout, seconds. httpx mode only. Default: 15.")
+    ] = None,
     exact: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--exact",
+            "--exact/--no-exact",
             help="Match the domain exactly -- do not count subdomains (blog.medilana.id) as a match.",
         ),
-    ] = False,
-    strict: Annotated[
-        bool,
-        typer.Option("--strict", help="Skip weaker/indirect (tracker-embedded) match signals."),
-    ] = False,
-    user_agent: Annotated[
-        str, typer.Option("-u", "--agent", help="User-Agent header sent with every request.")
-    ] = "Mozilla/5.0 (compatible; BacklinkChecker/1.0; +https://example.org/bot)",
-    header: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--header",
-            "-H",
-            help=(
-                "Extra header as 'Name: Value' (applied to every request), or scoped to one "
-                "platform as 'example.com|Name: Value' (applied only to that domain and its "
-                "subdomains -- repeat per platform for a mixed backlink list, e.g. a different "
-                "session Cookie for LinkedIn vs. Facebook vs. a WHMCS marketplace page). "
-                "Not a login flow -- RedirectHunter never submits credentials on your behalf; "
-                "log in manually in a real browser first, then paste the resulting session cookie."
-            ),
-        ),
     ] = None,
-    headers_file: Annotated[
-        Path | None,
-        typer.Option(
-            "--headers-file",
-            exists=True,
-            dir_okay=False,
-            help=(
-                "File of -H-style header lines (one per line, same 'Name: Value' / "
-                "'domain.com|Name: Value' syntax, '#' comments and blank lines skipped) -- "
-                "so a reusable set of session cookies doesn't have to be retyped on the "
-                "command line every run. See examples/bl-check-headers.txt. Combined with "
-                "any -H values also given, not replaced by them. Keep this file out of "
-                "version control -- it holds real session cookies."
-            ),
-        ),
+    strict: Annotated[
+        bool | None,
+        typer.Option("--strict/--no-strict", help="Skip weaker/indirect (tracker-embedded) match signals."),
+    ] = None,
+    user_agent: Annotated[
+        str | None, typer.Option("-u", "--agent", help="User-Agent header sent with every request.")
     ] = None,
     accounts_file: Annotated[
         Path | None,
@@ -2515,45 +2437,61 @@ def bl_check(
                 "individual rows are prefixed 'account_id|https://...' (TXT), have an "
                 "'account_id' column (CSV), or an \"account_id\" key (JSON) -- for the case "
                 "where one domain (e.g. facebook.com) needs many different sessions, one per "
-                "row, not one shared -H/--headers-file cookie for the whole run. See "
-                "examples/bl-check-accounts.txt. Rows without an account_id are unaffected. "
-                "Keep this file out of version control -- it holds real session cookies."
+                "row. See examples/bl-check-accounts.txt. Rows without an account_id are "
+                "checked as normal, unauthenticated requests. Keep this file out of version "
+                "control -- it holds real session cookies. Can also be set as bl_check.accounts_file "
+                "in redirecthunter.yaml so it doesn't need retyping every run -- see --config."
             ),
         ),
     ] = None,
     browser: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--browser",
+            "--browser/--no-browser",
             help=(
                 "Render with a real (Playwright) browser instead of a plain HTTP GET -- for pages "
                 "whose links are added by client-side JS after load. Needs the `redirecthunter\\[js]` "
                 "extra: pip install redirecthunter\\[js] && playwright install chromium."
             ),
         ),
-    ] = False,
+    ] = None,
     headed: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--headed", help="Show the real browser window instead of running headless. Only with --browser."
+            "--headed/--no-headed", help="Show the real browser window instead of running headless. Only with --browser."
         ),
-    ] = False,
+    ] = None,
     nav_timeout: Annotated[
-        float, typer.Option("--nav-timeout", help="Seconds to wait for navigation. Only with --browser.")
-    ] = 30.0,
+        float | None, typer.Option("--nav-timeout", help="Seconds to wait for navigation. Only with --browser. Default: 30.")
+    ] = None,
     render_wait: Annotated[
-        float,
+        float | None,
         typer.Option(
             "--render-wait",
-            help="Seconds to wait for the page to go network-idle after load. Only with --browser.",
+            help="Seconds to wait for the page to go network-idle after load. Only with --browser. Default: 8.",
         ),
-    ] = 8.0,
+    ] = None,
     label: Annotated[
         str | None, typer.Option("-l", "--label", help="Human-readable label for this run.")
     ] = None,
     database: Annotated[
-        Path, typer.Option("--database", "--db", help="SQLite results database path.")
-    ] = Path("redirecthunter.db"),
+        Path | None, typer.Option("--database", "--db", help="SQLite results database path. Default: redirecthunter.db.")
+    ] = None,
+    config_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            exists=True,
+            dir_okay=False,
+            help=(
+                "YAML config file. Auto-discovered (redirecthunter.yaml et al.) if omitted. "
+                "Presets read from its 'bl_check:' section -- domain, accounts_file, "
+                "concurrency, timeout, exact, strict, user_agent, browser, headed, nav_timeout, "
+                "render_wait, label, database -- so they don't need retyping every run. "
+                "Priority: CLI flag > config file > built-in default. See examples/redirecthunter.yaml."
+            ),
+        ),
+    ] = None,
     log_level: Annotated[LogLevel, typer.Option("--log-level", case_sensitive=False, help="Logging verbosity.")] = LogLevel.INFO,
     log_file: Annotated[Path | None, typer.Option("--log-file", help="Also write logs to this file.")] = None,
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress console log output.")] = False,
@@ -2596,33 +2534,53 @@ def bl_check(
 
         redirecthunter bl-check backlinks.txt -d medilana.id --browser
 
-        redirecthunter bl-check backlinks.txt -d medilana.id -H "Cookie: session=abc123"
+        redirecthunter bl-check backlinks.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
 
-        redirecthunter bl-check backlinks.txt -d medilana.id \\
-            -H "linkedin.com|Cookie: li_at=abc123" \\
-            -H "facebook.com|Cookie: c_user=1;xs=def456"
-
-        redirecthunter bl-check backlinks.txt -d medilana.id --headers-file examples/bl-check-headers.txt
+        redirecthunter bl-check backlinks.txt --config redirecthunter.yaml
 
     On login-walled pages (see `requires_login` in results / `looks_like_login_wall`),
-    `-H/--header` lets you attach a session cookie from an already-authenticated
-    browser session so the real page (not the login page) gets checked. Use the
-    plain `"Name: Value"` form to apply a header to every URL in the file, or the
-    scoped `"domain.com|Name: Value"` form (repeatable, once per platform) so a
-    single run over a large, mixed backlink list can carry a different cookie
-    for each login-walled platform without sending it to unrelated hosts.
-    `--headers-file` reads the same lines from a file instead of the command
-    line -- see `examples/bl-check-headers.txt` -- so a reusable set of
-    cookies doesn't have to be retyped every run. This is strictly "bring
-    your own session" -- there is no username/password/login-form automation
-    anywhere in this command, in either httpx or `--browser` mode.
+    `--accounts-file` lets you attach a session cookie from an already-authenticated
+    browser session so the real page (not the login page) gets checked -- one
+    session per `account_id`, referenced from the matching input row (see
+    `examples/bl-check-accounts.txt`). This is strictly "bring your own
+    session" -- there is no username/password/login-form automation anywhere
+    in this command, in either httpx or `--browser` mode.
+
+    `--config` reads `domain`, `accounts_file`, `concurrency`, `timeout`,
+    `exact`, `strict`, `user_agent`, `browser`, `headed`, `nav_timeout`,
+    `render_wait`, `label`, and `database` from `redirecthunter.yaml`'s
+    `bl_check:` section (auto-discovered if omitted), so a standing set of
+    flags doesn't need retyping every run. CLI flags always win over the
+    config file. See `examples/redirecthunter.yaml`.
     """
     configure_logging(log_level, log_file, quiet=quiet)
 
     async def _prepare_and_run() -> None:
-        resolved_format = format or infer_input_format(input_file)
+        try:
+            resolved_config, resolved_accounts_file = build_backlink_check_config(
+                input_path=input_file,
+                input_format=format,
+                domain=domain,
+                concurrency=concurrency,
+                timeout=timeout,
+                exact=exact,
+                strict=strict,
+                user_agent=user_agent,
+                accounts_file=accounts_file,
+                browser=browser,
+                headed=headed,
+                nav_timeout=nav_timeout,
+                render_wait=render_wait,
+                label=label,
+                database_path=database,
+                config_file=config_file,
+            )
+        except ConfigError as exc:
+            console.print(f"[bold red]Configuration error:[/bold red] {exc}")
+            raise typer.Exit(code=1) from None
+
         loader_config = ScanConfig(
-            input_path=input_file, input_format=resolved_format, input_column=input_column
+            input_path=input_file, input_format=resolved_config.input_format, input_column=input_column
         )
         try:
             candidates = list(load_candidates(loader_config))
@@ -2638,16 +2596,11 @@ def bl_check(
             console.print("[yellow]No URLs found in input file. Nothing to do.[/yellow]")
             raise typer.Exit(code=0)
 
-        if headed and not browser:
+        if resolved_config.headed and not resolved_config.browser:
             console.print("[bold red]Configuration error:[/bold red] --headed only makes sense with --browser.")
             raise typer.Exit(code=1)
 
-        resolved_concurrency = concurrency if concurrency is not None else (4 if browser else 8)
-
-        file_header_lines = _read_header_lines_from_file(headers_file) if headers_file else []
-        global_headers, scoped_headers = _parse_scoped_headers(file_header_lines + list(header or []))
-
-        account_lines = _read_header_lines_from_file(accounts_file) if accounts_file else []
+        account_lines = _read_lines_from_file(resolved_accounts_file) if resolved_accounts_file else []
         account_headers, account_warnings = _parse_account_headers(account_lines)
         for warning in account_warnings:
             console.print(f"[yellow]{warning}[/yellow]")
@@ -2657,33 +2610,10 @@ def bl_check(
             console.print(
                 f"[bold red]Configuration error:[/bold red] {len(missing_accounts)} account_id(s) "
                 f"referenced in {input_file} are not in the accounts registry"
-                + (f" ({accounts_file})" if accounts_file else " (no --accounts-file given)")
+                + (f" ({resolved_accounts_file})" if resolved_accounts_file else " (no --accounts-file given)")
                 + f": {', '.join(missing_accounts)}"
             )
             raise typer.Exit(code=1)
-
-        try:
-            resolved_config = BacklinkCheckConfig(
-                domain=domain,
-                input_path=input_file,
-                input_format=resolved_format,
-                allow_subdomains=not exact,
-                check_indirect=not strict,
-                concurrency=resolved_concurrency,
-                timeout=timeout,
-                user_agent=user_agent,
-                extra_headers=global_headers,
-                domain_headers=scoped_headers,
-                database_path=database,
-                label=label,
-                browser=browser,
-                headed=headed,
-                nav_timeout=nav_timeout,
-                render_wait=render_wait,
-            )
-        except ValidationError as exc:
-            console.print(f"[bold red]Configuration error:[/bold red] {exc}")
-            raise typer.Exit(code=1) from None
 
         await _run_backlink_check(
             resolved_config,
@@ -2775,8 +2705,6 @@ async def _run_backlink_chain_tier(
                     user_agent=config.user_agent,
                     headed=config.headed,
                     block_resources=config.block_resources,
-                    extra_headers=config.extra_headers,
-                    domain_headers=config.domain_headers,
                     per_url_targets=per_url_targets,
                     per_url_account_id=per_url_account_id,
                     account_headers=account_headers,
@@ -2791,8 +2719,6 @@ async def _run_backlink_chain_tier(
                     allow_subdomains=config.allow_subdomains,
                     check_indirect=config.check_indirect,
                     user_agent=config.user_agent,
-                    extra_headers=config.extra_headers,
-                    domain_headers=config.domain_headers,
                     per_url_targets=per_url_targets,
                     per_url_account_id=per_url_account_id,
                     account_headers=account_headers,
@@ -2840,20 +2766,25 @@ def bl_chain(
         ),
     ],
     domain: Annotated[
-        str,
-        typer.Option("-d", "--domain", help="Root (tier 1) target domain to look for, e.g. medilana.id."),
-    ],
-    require_confirmed_parent: Annotated[
-        bool,
+        str | None,
         typer.Option(
-            "--require-confirmed-parent",
+            "-d",
+            "--domain",
+            help="Root (tier 1) target domain to look for, e.g. medilana.id. Can also be set as "
+            "bl_chain.domain in redirecthunter.yaml -- see --config.",
+        ),
+    ] = None,
+    require_confirmed_parent: Annotated[
+        bool | None,
+        typer.Option(
+            "--require-confirmed-parent/--no-require-confirmed-parent",
             help=(
                 "Derive each tier's default target set only from the previous tier's confirmed "
                 "(match_found) rows, instead of all of its input URLs. Off by default -- see "
                 "the bl-chain docstring for why."
             ),
         ),
-    ] = False,
+    ] = None,
     concurrency: Annotated[
         int | None,
         typer.Option(
@@ -2863,40 +2794,20 @@ def bl_chain(
         ),
     ] = None,
     timeout: Annotated[
-        float, typer.Option("-t", "--timeout", help="Per-request timeout, seconds. httpx mode only.")
-    ] = 15.0,
+        float | None, typer.Option("-t", "--timeout", help="Per-request timeout, seconds. httpx mode only.")
+    ] = None,
     exact: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--exact", help="Match target domains exactly -- do not count subdomains as a match."
-        ),
-    ] = False,
-    strict: Annotated[
-        bool,
-        typer.Option("--strict", help="Skip weaker/indirect (tracker-embedded) match signals."),
-    ] = False,
-    user_agent: Annotated[
-        str, typer.Option("-u", "--agent", help="User-Agent header sent with every request.")
-    ] = "Mozilla/5.0 (compatible; BacklinkChecker/1.0; +https://example.org/bot)",
-    header: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--header",
-            "-H",
-            help=(
-                "Extra header as 'Name: Value' (applied to every request), or scoped to one "
-                "platform as 'example.com|Name: Value'. Same syntax as bl-check's -H."
-            ),
+            "--exact/--no-exact", help="Match target domains exactly -- do not count subdomains as a match."
         ),
     ] = None,
-    headers_file: Annotated[
-        Path | None,
-        typer.Option(
-            "--headers-file",
-            exists=True,
-            dir_okay=False,
-            help="File of -H-style header lines. Same syntax as bl-check's --headers-file.",
-        ),
+    strict: Annotated[
+        bool | None,
+        typer.Option("--strict/--no-strict", help="Skip weaker/indirect (tracker-embedded) match signals."),
+    ] = None,
+    user_agent: Annotated[
+        str | None, typer.Option("-u", "--agent", help="User-Agent header sent with every request.")
     ] = None,
     accounts_file: Annotated[
         Path | None,
@@ -2907,39 +2818,55 @@ def bl_chain(
             help=(
                 "Registry of per-account session headers. Same 'account_id|Name: Value' syntax "
                 "and paired 'account_id|URL' row prefix as bl-check's --accounts-file, applied "
-                "the same way across every tier."
+                "the same way across every tier. Can also be set as bl_chain.accounts_file in "
+                "redirecthunter.yaml -- see --config."
             ),
         ),
     ] = None,
     browser: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--browser",
+            "--browser/--no-browser",
             help="Render every tier with a real (Playwright) browser instead of a plain HTTP GET.",
         ),
-    ] = False,
+    ] = None,
     headed: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--headed", help="Show the real browser window instead of running headless. Only with --browser."
+            "--headed/--no-headed", help="Show the real browser window instead of running headless. Only with --browser."
         ),
-    ] = False,
+    ] = None,
     nav_timeout: Annotated[
-        float, typer.Option("--nav-timeout", help="Seconds to wait for navigation. Only with --browser.")
-    ] = 30.0,
+        float | None, typer.Option("--nav-timeout", help="Seconds to wait for navigation. Only with --browser.")
+    ] = None,
     render_wait: Annotated[
-        float,
+        float | None,
         typer.Option(
             "--render-wait",
             help="Seconds to wait for the page to go network-idle after load. Only with --browser.",
         ),
-    ] = 8.0,
+    ] = None,
     label: Annotated[
         str | None, typer.Option("-l", "--label", help="Human-readable label for this chain.")
     ] = None,
     database: Annotated[
-        Path, typer.Option("--database", "--db", help="SQLite results database path.")
-    ] = Path("redirecthunter.db"),
+        Path | None, typer.Option("--database", "--db", help="SQLite results database path.")
+    ] = None,
+    config_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            exists=True,
+            dir_okay=False,
+            help=(
+                "YAML config file. Auto-discovered (redirecthunter.yaml et al.) if omitted. "
+                "Presets read from its 'bl_chain:' section -- domain, accounts_file, "
+                "concurrency, timeout, exact, strict, user_agent, browser, headed, nav_timeout, "
+                "render_wait, label, database -- so they don't need retyping every run. "
+                "Priority: CLI flag > config file > built-in default. See examples/redirecthunter.yaml."
+            ),
+        ),
+    ] = None,
     log_level: Annotated[LogLevel, typer.Option("--log-level", case_sensitive=False, help="Logging verbosity.")] = LogLevel.INFO,
     log_file: Annotated[Path | None, typer.Option("--log-file", help="Also write logs to this file.")] = None,
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress console log output.")] = False,
@@ -2971,6 +2898,17 @@ def bl_chain(
         redirecthunter bl-chain tier1.txt tier2.txt tier3.txt -d medilana.id --require-confirmed-parent
 
         redirecthunter bl-chain tier1.txt tier2.txt -d medilana.id -c 16 --exact -l "Q3 pyramid audit"
+
+        redirecthunter bl-chain tier1.txt tier2.txt --accounts-file examples/bl-check-accounts.txt
+
+        redirecthunter bl-chain tier1.txt tier2.txt --config redirecthunter.yaml
+
+    `--config` reads `domain`, `accounts_file`, `concurrency`, `timeout`,
+    `exact`, `strict`, `user_agent`, `browser`, `headed`, `nav_timeout`,
+    `render_wait`, `label`, and `database` from `redirecthunter.yaml`'s
+    `bl_chain:` section (auto-discovered if omitted), the same way
+    `bl-check`'s `bl_check:` section works -- CLI flags always win. See
+    `examples/redirecthunter.yaml`.
     """
     configure_logging(log_level, log_file, quiet=quiet)
 
@@ -2981,42 +2919,38 @@ def bl_chain(
         )
         raise typer.Exit(code=1)
 
-    if headed and not browser:
-        console.print("[bold red]Configuration error:[/bold red] --headed only makes sense with --browser.")
-        raise typer.Exit(code=1)
-
     async def _prepare_and_run() -> None:
-        resolved_concurrency = concurrency if concurrency is not None else (4 if browser else 8)
-        file_header_lines = _read_header_lines_from_file(headers_file) if headers_file else []
-        global_headers, scoped_headers = _parse_scoped_headers(file_header_lines + list(header or []))
-
-        account_lines = _read_header_lines_from_file(accounts_file) if accounts_file else []
-        account_headers, account_warnings = _parse_account_headers(account_lines)
-        for warning in account_warnings:
-            console.print(f"[yellow]{warning}[/yellow]")
-
         try:
-            chain_config = BacklinkChainConfig(
-                domain=domain,
+            chain_config, resolved_accounts_file = build_backlink_chain_config(
                 tier_paths=tier_paths,
+                domain=domain,
                 require_confirmed_parent=require_confirmed_parent,
-                allow_subdomains=not exact,
-                check_indirect=not strict,
-                concurrency=resolved_concurrency,
+                concurrency=concurrency,
                 timeout=timeout,
+                exact=exact,
+                strict=strict,
                 user_agent=user_agent,
-                extra_headers=global_headers,
-                domain_headers=scoped_headers,
-                database_path=database,
-                label=label,
+                accounts_file=accounts_file,
                 browser=browser,
                 headed=headed,
                 nav_timeout=nav_timeout,
                 render_wait=render_wait,
+                label=label,
+                database_path=database,
+                config_file=config_file,
             )
-        except ValidationError as exc:
+        except ConfigError as exc:
             console.print(f"[bold red]Configuration error:[/bold red] {exc}")
             raise typer.Exit(code=1) from None
+
+        if chain_config.headed and not chain_config.browser:
+            console.print("[bold red]Configuration error:[/bold red] --headed only makes sense with --browser.")
+            raise typer.Exit(code=1)
+
+        account_lines = _read_lines_from_file(resolved_accounts_file) if resolved_accounts_file else []
+        account_headers, account_warnings = _parse_account_headers(account_lines)
+        for warning in account_warnings:
+            console.print(f"[yellow]{warning}[/yellow]")
 
         # Load every tier's candidates up front -- catches a bad input
         # file (missing URL column, unreadable format, etc.) before any
@@ -3053,7 +2987,7 @@ def bl_chain(
             console.print(
                 f"[bold red]Configuration error:[/bold red] {len(all_missing_accounts)} account_id(s) "
                 f"referenced across the chain's tiers are not in the accounts registry"
-                + (f" ({accounts_file})" if accounts_file else " (no --accounts-file given)")
+                + (f" ({resolved_accounts_file})" if resolved_accounts_file else " (no --accounts-file given)")
                 + f": {', '.join(all_missing_accounts)}"
             )
             raise typer.Exit(code=1)
@@ -3099,8 +3033,6 @@ def bl_chain(
                         concurrency=chain_config.concurrency,
                         timeout=chain_config.timeout,
                         user_agent=chain_config.user_agent,
-                        extra_headers=chain_config.extra_headers,
-                        domain_headers=chain_config.domain_headers,
                         database_path=chain_config.database_path,
                         label=(
                             f"{chain_config.label} - tier {tier_index + 1}"

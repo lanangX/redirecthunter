@@ -526,7 +526,7 @@ redirecthunter bl-check [OPTIONS] INPUT_FILE
 | | |
 |---|---|
 | `INPUT_FILE` | Required. TXT/CSV/JSON/SQLite file of URLs to check — same formats `scan`/`crawl --input-file` accept. |
-| `--domain` / `-d` | Required. Target domain to look for, e.g. `medilana.id`. |
+| `--domain` / `-d` | Target domain to look for, e.g. `medilana.id`. Required unless set as `bl_check.domain` in `redirecthunter.yaml` — see `--config`. |
 | `--format` | Input file format. Inferred from extension if omitted. |
 | `--input-column` | URL column name for CSV input. Default `url`. |
 | `--concurrency` / `-c` | Concurrent workers. Default `8` (httpx mode) or `4` (`--browser` mode, real page loads are much heavier — override with `-c` if you want something else). |
@@ -534,8 +534,6 @@ redirecthunter bl-check [OPTIONS] INPUT_FILE
 | `--exact` | Match the domain exactly — do not count subdomains (`blog.medilana.id`) as a match. |
 | `--strict` | Skip weaker/indirect (tracker-embedded) match signals. |
 | `--agent` / `-u` | `User-Agent` header sent with every request. |
-| `--header` / `-H` | Extra header as `Name: Value`, or scoped to one platform as `example.com|Name: Value`. Repeatable. |
-| `--headers-file` | File of `-H`-style header lines. |
 | `--accounts-file` | Registry of per-account session headers (`account_id|Name: Value` per line), paired with `account_id|URL` input rows — for one domain needing many different sessions, one per row. See [Account-scoped sessions](./BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file). |
 | `--browser` | Render with a real (Playwright) browser instead of a plain HTTP GET. Needs the `redirecthunter[js]` extra installed separately. |
 | `--headed` | Show the real browser window instead of running headless. Only meaningful with `--browser`; rejected otherwise. |
@@ -543,6 +541,7 @@ redirecthunter bl-check [OPTIONS] INPUT_FILE
 | `--render-wait` | Seconds to wait for the page to go network-idle after load, so a SPA's own JS has time to hydrate the DOM. Only used with `--browser`. Default `8.0`. |
 | `--label` / `-l` | Human-readable label for this run. |
 | `--database` / `--db` | SQLite results database path (default `redirecthunter.db`). |
+| `--config` | YAML config file. Auto-discovered (`redirecthunter.yaml` et al.) if omitted. Presets read from its `bl_check:` section — domain, accounts_file, concurrency, timeout, exact, strict, user_agent, browser, headed, nav_timeout, render_wait, label, database. Priority: CLI flag > config file > built-in default. See [Presets](./BACKLINK_GUIDE.md#presets---config). |
 | `--log-level`, `--log-file`, `--quiet` / `-q` | Same meaning as the equivalent `scan` flags. |
 
 **Examples**
@@ -553,6 +552,7 @@ redirecthunter bl-check backlinks.csv -d medilana.id -c 16 -t 20 --exact
 redirecthunter bl-check backlinks.txt -d medilana.id --strict -l "Q3 audit"
 redirecthunter bl-check backlinks.txt -d medilana.id --browser
 redirecthunter bl-check backlinks.txt -d medilana.id --browser --headed --nav-timeout 60
+redirecthunter bl-check backlinks.txt --config redirecthunter.yaml
 ```
 
 ## `bl-chain`
@@ -586,15 +586,13 @@ redirecthunter bl-chain [OPTIONS] TIER_PATHS...
 | | |
 |---|---|
 | `TIER_PATHS` | Required. Two or more ordered tier input files (TXT/CSV/JSON), tier 1 first. |
-| `--domain` / `-d` | Required. Root (tier 1) target domain to look for, e.g. `medilana.id`. |
+| `--domain` / `-d` | Root (tier 1) target domain to look for, e.g. `medilana.id`. Required unless set as `bl_chain.domain` in `redirecthunter.yaml` — see `--config`. |
 | `--require-confirmed-parent` | Derive each tier's default target set only from the previous tier's confirmed (`match_found`) rows, instead of all of its input URLs. Off by default. |
 | `--concurrency` / `-c` | Concurrent workers, applied per tier. Default `8` (httpx mode) or `4` (`--browser` mode). |
 | `--timeout` / `-t` | Per-request timeout, seconds. httpx mode only. Default `15.0`. |
 | `--exact` | Match target domains exactly — do not count subdomains as a match. |
 | `--strict` | Skip weaker/indirect (tracker-embedded) match signals. |
 | `--agent` / `-u` | `User-Agent` header sent with every request. |
-| `--header` / `-H` | Extra header as `Name: Value`, or scoped to one platform as `example.com|Name: Value`. Repeatable. Same syntax as `bl-check`'s `-H`. |
-| `--headers-file` | File of `-H`-style header lines. |
 | `--accounts-file` | Registry of per-account session headers, same as `bl-check`'s `--accounts-file` — one `--accounts-file` is shared across every tier. See [Account-scoped sessions](./BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file). |
 | `--browser` | Render every tier with a real (Playwright) browser instead of a plain HTTP GET. |
 | `--headed` | Show the real browser window instead of running headless. Only meaningful with `--browser`. |
@@ -602,6 +600,7 @@ redirecthunter bl-chain [OPTIONS] TIER_PATHS...
 | `--render-wait` | Seconds to wait for network-idle after load. Only used with `--browser`. Default `8.0`. |
 | `--label` / `-l` | Human-readable label for this chain. |
 | `--database` / `--db` | SQLite results database path (default `redirecthunter.db`). |
+| `--config` | YAML config file. Auto-discovered (`redirecthunter.yaml` et al.) if omitted. Presets read from its `bl_chain:` section — domain, accounts_file, concurrency, timeout, exact, strict, user_agent, browser, headed, nav_timeout, render_wait, label, database, require_confirmed_parent. `tier_paths` is never read from YAML. Priority: CLI flag > config file > built-in default. See [Presets](./BACKLINK_GUIDE.md#presets---config). |
 | `--log-level`, `--log-file`, `--quiet` / `-q` | Same meaning as the equivalent `scan` flags. |
 
 **Examples**
@@ -610,6 +609,7 @@ redirecthunter bl-chain [OPTIONS] TIER_PATHS...
 redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
 redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt examples/bl-chain-tier3.txt -d medilana.id --require-confirmed-parent --accounts-file examples/bl-check-accounts.txt
 redirecthunter bl-chain tier1.txt tier2.txt -d medilana.id -c 16 --exact -l "Q3 pyramid audit"
+redirecthunter bl-chain tier1.txt tier2.txt --config redirecthunter.yaml
 ```
 
 `--accounts-file` is required in the first two examples above because

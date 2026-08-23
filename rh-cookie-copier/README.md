@@ -1,13 +1,13 @@
 # RedirectHunter Cookie Copier
 
 A tiny browser extension: one click copies the current site's session
-cookies, already formatted as a `bl-check --headers-file` line, straight to
+cookies, already formatted as a `bl-check --accounts-file` line, straight to
 your clipboard. Built to solve two specific `bl-check` pain points:
 
 1. You shouldn't have to dig through DevTools and guess which of a dozen
    cookies (`_ga`, `_gid`, `__Secure-3PSID`, ...) is actually the session
    cookie.
-2. You shouldn't have to retype `-H "domain|Cookie: ..."` by hand every time.
+2. You shouldn't have to retype `account_id|Cookie: ...` by hand every time.
 
 It's not published to any extension store (that requires a review process
 and a fixed, versioned account) — you load it locally, which takes under a
@@ -17,7 +17,7 @@ minute and works identically on every Chromium browser plus Firefox.
 
 - Reads the cookies your browser would send with a request to the site
   you're currently on — the exact same set the server sees, no guessing.
-- Formats them as one line, in the format `bl-check --headers-file` expects.
+- Formats them as one line, in the format `bl-check --accounts-file` expects.
 - Copies that line to your clipboard. Nothing is sent anywhere else, ever
   — there's no server, no network request, no analytics in this extension.
 - Only asks for permission to read cookies for the **one site** you're on,
@@ -54,33 +54,25 @@ minute and works identically on every Chromium browser plus Firefox.
    access to that site's cookies — approve it (this is the one-time
    permission prompt, scoped to that domain only).
 4. Pick a format:
-   - **Scoped line** (`domain|Cookie: ...`) — for a mixed backlink list
-     sharing one session per domain. Paste into `bl-check-headers.txt`.
-     The default and usually what you want.
-   - **Account line** (`account_id|Cookie: ...`) — for a `bl-check
-     --accounts-file` setup, where one domain needs many different
-     sessions (e.g. 30 social-media accounts on the same platform). Type
-     the same `account_id` your input file uses in its `account_id|URL`
-     rows, then paste the result into `bl-check-accounts.txt`. If an
-     account needs more than one header (e.g. Cookie + User-Agent), run
-     "Fetch" again with the same account_id and add the extra line by
-     hand — the file format allows repeating an account_id across
-     several lines.
-   - **Global line** (`Cookie: ...`) — applied to every URL in a run;
-     only use this if the whole input file is one platform.
+   - **Account line** (`account_id|Cookie: ...`) — the default, for a
+     `bl-check --accounts-file` setup, where one domain needs many
+     different sessions (e.g. 30 social-media accounts on the same
+     platform). Type the same `account_id` your input file uses in its
+     `account_id|URL` rows, then paste the result into
+     `bl-check-accounts.txt`. If an account needs more than one header
+     (e.g. Cookie + User-Agent), run "Fetch" again with the same
+     account_id and add the extra line by hand — the file format allows
+     repeating an account_id across several lines.
    - **Raw value only** — just the `name=value; name=value` string, if
      you're pasting it somewhere else.
 5. Click **Fetch cookies from this tab**. The result is copied
    automatically, and also shown in an editable text box — tweak it (drop
-   a cookie you don't want, fix the domain/account label, whatever) and
-   click **Copy to clipboard** again to grab the edited version.
-6. Paste the line into your `headers.txt` or `accounts.txt` (see
-   `examples/bl-check-headers.txt` and `examples/bl-check-accounts.txt`
-   in the main RedirectHunter repo), then:
+   a cookie you don't want, fix the account label, whatever) and click
+   **Copy to clipboard** again to grab the edited version.
+6. Paste the line into your `accounts.txt` (see
+   `examples/bl-check-accounts.txt` in the main RedirectHunter repo), then:
 
    ```bash
-   redirecthunter bl-check backlinks.txt -d medilana.id --headers-file headers.txt
-   # or, for account-scoped sessions:
    redirecthunter bl-check backlinks.txt -d medilana.id --accounts-file accounts.txt
    ```
 

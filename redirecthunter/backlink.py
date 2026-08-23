@@ -226,31 +226,6 @@ def looks_like_bot_block_status(status_code: int) -> bool:
     return status_code in _ANTI_BOT_STATUS_CODES
 
 
-def resolve_domain_headers(
-    url: str, domain_headers: Mapping[str, Mapping[str, str]] | None
-) -> dict[str, str] | None:
-    """Pick the header set (if any) whose scoping domain matches ``url``'s own host.
-
-    ``domain_headers`` is keyed by normalized domain (see `_parse_scoped_headers`
-    in `cli.py`) -- e.g. checking against multiple different login-walled
-    platforms in one `bl-check` run, each with its own session cookie, without
-    leaking any of them to the rest of the (usually much larger) URL list.
-    Subdomains match their parent the same way `hostname_matches` already does
-    everywhere else in this module. First matching entry wins if more than one
-    domain key happens to match (longest/most specific is not disambiguated --
-    keep scoped domains non-overlapping in practice).
-    """
-    if not domain_headers:
-        return None
-    host = urlparse(url).hostname
-    if not host:
-        return None
-    for domain, headers in domain_headers.items():
-        if hostname_matches(host, domain, allow_subdomains=True):
-            return dict(headers)
-    return None
-
-
 def resolve_account_headers(
     url: str,
     per_url_account_id: Mapping[str, str] | None,
@@ -284,42 +259,6 @@ def resolve_account_headers(
         return None
     headers = account_headers.get(account_id)
     return dict(headers) if headers else None
-
-
-def resolve_effective_headers(
-    url: str,
-    domain_headers: Mapping[str, Mapping[str, str]] | None,
-    per_url_account_id: Mapping[str, str] | None = None,
-    account_headers: Mapping[str, Mapping[str, str]] | None = None,
-) -> dict[str, str] | None:
-    """Merge domain-scoped and account-scoped headers for one request, account wins ties.
-
-    Priority (lowest to highest, later updates win on overlapping header
-    names): global headers (already baked into the client's/context's own
-    default headers, not this function's concern) -> ``domain_headers``
-    (``resolve_domain_headers``) -> account-specific headers
-    (``resolve_account_headers``). This is the one place both
-    `run_backlink_checks` (httpx) and `run_backlink_checks_browser`
-    (Playwright) go through to build a request's/page's extra headers, so
-    the priority order only needs to be correct in one spot.
-
-    A per-row account selector is deliberately the *most* specific/highest-
-    priority layer: an operator who tagged one row with ``account_001``
-    wants that exact session used for that exact row, even if the row's
-    own host also happens to carry an unrelated domain-scoped cookie from
-    the same run's ``-H``/``--headers-file``.
-
-    Returns ``None`` (not ``{}``) when neither layer contributes anything,
-    matching ``resolve_domain_headers``'s existing "no override" contract.
-    """
-    merged: dict[str, str] = {}
-    domain_specific = resolve_domain_headers(url, domain_headers)
-    if domain_specific:
-        merged.update(domain_specific)
-    account_specific = resolve_account_headers(url, per_url_account_id, account_headers)
-    if account_specific:
-        merged.update(account_specific)
-    return merged or None
 
 
 # --------------------------------------------------------------------------
@@ -575,8 +514,6 @@ async def run_backlink_checks(
     allow_subdomains: bool,
     check_indirect: bool,
     user_agent: str,
-    extra_headers: Mapping[str, str] | None = None,
-    domain_headers: Mapping[str, Mapping[str, str]] | None = None,
     per_url_targets: Mapping[str, frozenset[str]] | None = None,
     per_url_account_id: Mapping[str, str] | None = None,
     account_headers: Mapping[str, Mapping[str, str]] | None = None,
@@ -592,33 +529,19 @@ async def run_backlink_checks(
     plain `frozenset[str]` and never needs to know an override concept
     exists.
 
-    ``extra_headers`` (e.g. a manually-obtained ``Cookie:`` value) is
-    merged into every request's headers, on top of ``User-Agent`` -- this
-    is how a page behind a login wall (see ``looks_like_login_wall``) can
-    be checked with a real, already-authenticated session. There is no
-    username/password/login-form flow here: RedirectHunter never logs
-    in on your behalf. You authenticate manually in a real browser once,
-    copy the resulting session cookie, and pass it straight through.
-
-    ``domain_headers`` is the scoped counterpart: headers applied only to
-    requests whose own URL host matches a given domain (see
-    `resolve_domain_headers`), so one run over a large, multi-platform
-    backlink list can carry a different session cookie per login-walled
-    platform without sending any of them to the unrelated majority of
-    URLs in the same file.
-
-    ``per_url_account_id``/``account_headers`` are the *account*-scoped
-    counterpart to ``domain_headers`` -- for the common case where a
-    single domain (e.g. facebook.com) needs several different sessions,
-    one per row, not one per run. ``per_url_account_id`` maps a
-    candidate's ``raw_url`` to the ``account_id`` parsed from its input
-    row; ``account_headers`` is the ``--accounts-file`` registry mapping
-    each ``account_id`` to its own header dict. Resolved together via
-    `resolve_effective_headers`, with an account's own headers taking
-    priority over a same-name header from `domain_headers` for that same
-    row. A URL with no ``account_id`` is completely unaffected -- it never
-    receives any account's headers, even if its host also appears in
-    `account_headers` under a different row.
+    ``per_url_account_id``/``account_headers`` are how a page behind a
+    login wall (see ``looks_like_login_wall``) can be checked with a real,
+    already-authenticated session -- for the common case where a single
+    domain (e.g. facebook.com) needs several different sessions, one per
+    row, not one per run. ``per_url_account_id`` maps a candidate's
+    ``raw_url`` to the ``account_id`` parsed from its input row;
+    ``account_headers`` is the ``--accounts-file`` registry mapping each
+    ``account_id`` to its own header dict (resolved via
+    `resolve_account_headers`). A URL with no ``account_id`` is checked as
+    a normal, unauthenticated request. There is no username/password/
+    login-form flow here: RedirectHunter never logs in on your behalf --
+    you authenticate manually in a real browser once, copy the resulting
+    session cookie into the accounts file, and pass it straight through.
 
     Driven by the same bounded-queue-plus-sentinel worker pool shape
     ``engine.Engine.run()`` uses for `scan` -- this is a *fixed* candidate
@@ -639,8 +562,6 @@ async def run_backlink_checks(
     """
     limits = httpx.Limits(max_connections=concurrency * 2, max_keepalive_connections=concurrency)
     headers = {"User-Agent": user_agent}
-    if extra_headers:
-        headers.update(extra_headers)
     rate_limiter = RateLimiter(None)
     queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=concurrency * 4)
 
@@ -664,9 +585,7 @@ async def run_backlink_checks(
                     effective_targets,
                     allow_subdomains=allow_subdomains,
                     check_indirect=check_indirect,
-                    request_headers=resolve_effective_headers(
-                        url, domain_headers, per_url_account_id, account_headers
-                    ),
+                    request_headers=resolve_account_headers(url, per_url_account_id, account_headers),
                 )
                 await on_result(result)
             finally:
@@ -780,9 +699,9 @@ async def check_one_browser(
 
     Any non-``Cookie`` entry in ``request_headers`` is set via
     `page.set_extra_http_headers` -- scoped to this one page/URL, not the
-    shared `context` -- so a domain-scoped header (see
-    `resolve_domain_headers`) never leaks onto the other concurrent tabs
-    checking unrelated hosts.
+    shared `context` -- so an account-scoped header (see
+    `resolve_account_headers`) never leaks onto the other concurrent tabs
+    checking unrelated rows.
 
     A ``Cookie`` entry gets different treatment: `context.add_cookies()`
     instead. `set_extra_http_headers` only appends a raw ``Cookie:`` line
@@ -972,8 +891,6 @@ async def run_backlink_checks_browser(
     user_agent: str,
     headed: bool,
     block_resources: bool,
-    extra_headers: Mapping[str, str] | None = None,
-    domain_headers: Mapping[str, Mapping[str, str]] | None = None,
     per_url_targets: Mapping[str, frozenset[str]] | None = None,
     per_url_account_id: Mapping[str, str] | None = None,
     account_headers: Mapping[str, Mapping[str, str]] | None = None,
@@ -990,20 +907,15 @@ async def run_backlink_checks_browser(
     request (`bl-check` picks a lower default automatically when
     `--browser` is set and `-c` isn't given explicitly -- see `cli.py`).
 
-    ``extra_headers`` is set on the `BrowserContext` (so it rides along
-    on every navigation, including any redirects the page itself makes)
-    -- the same manual "paste a session cookie" model as httpx mode. This
-    still isn't a login flow: Playwright is only used to *render* the
-    page, never to fill in and submit a login form.
-
-    ``domain_headers``/``per_url_account_id``+``account_headers``, unlike
-    ``extra_headers``, are deliberately *not* set on the shared
-    `BrowserContext` -- they're resolved per-URL (`resolve_effective_headers`)
-    and applied via `page.set_extra_http_headers` inside `check_one_browser`,
-    scoped to that one page/tab. This is what keeps one row's
-    account-specific session from leaking onto the other concurrent tabs
-    checking different rows (different accounts, or no account at all) in
-    the same run.
+    ``per_url_account_id``/``account_headers`` are deliberately *not* set
+    on the shared `BrowserContext` -- they're resolved per-URL
+    (`resolve_account_headers`) and applied via
+    `page.set_extra_http_headers` inside `check_one_browser`, scoped to
+    that one page/tab. This is what keeps one row's account-specific
+    session from leaking onto the other concurrent tabs checking
+    different rows (different accounts, or no account at all) in the
+    same run. This still isn't a login flow: Playwright is only used to
+    *render* the page, never to fill in and submit a login form.
 
     Raises `PlaywrightNotInstalledError` if the `js` extra
     (`pip install redirecthunter[js]`) isn't installed -- checked here,
@@ -1028,7 +940,6 @@ async def run_backlink_checks_browser(
         context: BrowserContext = await browser.new_context(
             user_agent=user_agent,
             viewport={"width": 1280, "height": 900},
-            extra_http_headers=dict(extra_headers) if extra_headers else None,
         )
         if block_resources:
             await context.route("**/*", _block_heavy_resources)
@@ -1046,9 +957,7 @@ async def run_backlink_checks_browser(
                         check_indirect=check_indirect,
                         nav_timeout_ms=nav_timeout_ms,
                         render_wait_ms=render_wait_ms,
-                        request_headers=resolve_effective_headers(
-                            u, domain_headers, per_url_account_id, account_headers
-                        ),
+                        request_headers=resolve_account_headers(u, per_url_account_id, account_headers),
                     )
                     await on_result(result)
 
