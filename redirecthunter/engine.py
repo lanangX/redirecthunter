@@ -409,10 +409,10 @@ class Engine:
 
         async def producer() -> None:
             if hasattr(candidates, "__aiter__"):
-                async for candidate in candidates:  # type: ignore[union-attr]
+                async for candidate in candidates:
                     await queue.put(candidate)
             else:
-                for candidate in candidates:  # type: ignore[union-attr]
+                for candidate in candidates:
                     await queue.put(candidate)
             for _ in range(self._config.workers):
                 await queue.put(None)

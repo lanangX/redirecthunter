@@ -1,0 +1,31 @@
+# Example input for `redirecthunter bl-check`: a generic, dummy mix of
+# public URLs and account-scoped URLs. All domains here are placeholders
+# (example.com / .example) -- nothing to actually fetch. Use this as a
+# format reference, not a real input file.
+#
+# Usage:
+#   redirecthunter bl-check examples/backlink-sample.txt -d medilana.id \
+#     --accounts-file examples/bl-check-accounts.txt
+
+# Plain URL, no override -- checked against -d/--domain as given on the
+# command line:
+https://example-blog.com/post-1
+
+# Plain URL with its own per-row target override -- checked against
+# target-a.example.com instead of -d/--domain (see "Per-row target
+# override" in docs/BACKLINK_GUIDE.md):
+https://example-blog.com/post-2|target-a.example.com
+
+# Account-scoped rows -- each is checked using the session/headers
+# registered for that account_id in --accounts-file (see
+# examples/bl-check-accounts.txt). Two different accounts posting on the
+# very same platform domain, each needing its own session:
+account_001|https://social-platform.example.com/profile/brand-1
+account_002|https://social-platform.example.com/profile/brand-2
+
+# The same account_id can be reused across multiple rows:
+account_001|https://vendor-marketplace.example.com/product/123
+
+# Back to a plain public URL -- unaffected by the account rows above it,
+# checked as a normal, unauthenticated request:
+https://another-public-site.example.com/review

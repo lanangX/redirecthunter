@@ -1,0 +1,8 @@
+# Example tier-3 input for `redirecthunter bl-chain`. By default, tier 3
+# is checked against the set of hostnames extracted from tier 2's own
+# input URLs -- so these pages should link to one of tier 2's hosts, e.g.
+# forum-thread.example.com or blog-comment.example.net from
+# examples/bl-chain-tier2.txt.
+
+https://social-share-widget.example.io/share?url=abc
+https://rss-aggregator.example.co/feed/item-99

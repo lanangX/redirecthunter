@@ -12,8 +12,8 @@ from redirecthunter.models import (
     InputFormat,
     RedirectResult,
     RedirectType,
+    RunStatus,
     ScanConfig,
-    ScanStatus,
     ScanSummary,
 )
 
@@ -82,9 +82,9 @@ class TestRedirectResult:
 
 class TestScanSummary:
     def test_progress_pct(self) -> None:
-        summary = ScanSummary(scan_id="s1", status=ScanStatus.RUNNING, total_urls=200, completed=50)
+        summary = ScanSummary(scan_id="s1", status=RunStatus.RUNNING, total_urls=200, completed=50)
         assert summary.progress_pct == 25.0
 
     def test_progress_pct_zero_total(self) -> None:
-        summary = ScanSummary(scan_id="s1", status=ScanStatus.RUNNING, total_urls=0, completed=0)
+        summary = ScanSummary(scan_id="s1", status=RunStatus.RUNNING, total_urls=0, completed=0)
         assert summary.progress_pct == 0.0

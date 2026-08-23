@@ -1,0 +1,69 @@
+# Example --accounts-file for `redirecthunter bl-check --accounts-file` /
+# `redirecthunter bl-chain --accounts-file`.
+#
+# Usage:
+#   redirecthunter bl-check backlinks.txt -d medilana.id --accounts-file this-file.txt
+#
+# Use this instead of (or alongside) -H/--headers-file when ONE domain
+# needs MANY different sessions -- e.g. checking placements posted from
+# 30 different social-media accounts on the same platform, where each
+# placement needs its own Cookie, not one shared session for the whole
+# run. See docs/BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file.
+#
+# Format: one header per line, "account_id|Name: Value". Repeat the same
+# account_id on further lines to register more than one header for it:
+#
+#   account_001|Cookie: session=xxxxx
+#   account_001|User-Agent: Mozilla/5.0
+#   account_057|Cookie: session=yyyyy
+#
+# A bare "account_id|" line (nothing after the |) explicitly registers
+# that account with zero headers -- valid and intentional, distinct from
+# the account_id never appearing in this file at all. Use it to document
+# "this account is deliberately checked with no special headers."
+#
+# Pair this registry with input rows prefixed "account_id|URL" (TXT), an
+# "account_id" column (CSV), or a "account_id" key (JSON) -- see
+# examples/backlink-sample.txt for a matching input file that references
+# account_001 and account_002 below.
+#
+# Any account_id referenced by an input row but missing from this file
+# is a hard error: bl-check/bl-chain refuse to start and list every
+# missing account_id, before any request is sent. There is no silent
+# fallback to an anonymous request.
+#
+# --------------------------------------------------------------------------
+# HOW TO GET THE RIGHT COOKIE VALUE for each account (same procedure as
+# -H/--headers-file, repeated once per account you're registering here):
+#
+#   1. In a real browser, log in normally as that account until you're on
+#      a page that only shows up when authenticated.
+#   2. Open DevTools -> the *Network* tab (not Application/Storage/Cookies).
+#   3. Reload the page.
+#   4. Click the top document request (status 200) in the request list.
+#   5. Look at "Request Headers" and find the line that starts with
+#      "Cookie:". Copy everything after "Cookie: " verbatim.
+#   6. Paste it as that account's value below.
+#
+# The Network tab is the right place, not Application > Cookies: the
+# Application panel lists every cookie stored for the origin (analytics,
+# ad/consent cookies, unrelated widgets) with no reliable way to tell
+# which one is "the" session cookie. The Cookie header on an actual
+# outgoing request is exactly what the browser decided to send -- copy
+# that and you don't need to guess.
+#
+# Keep this file OUT of version control once you fill in real values --
+# these are live session credentials, one set per account. Treat it like
+# a password file. (Add its real filename to .gitignore; this example
+# file is safe to commit since it has no real values.)
+# --------------------------------------------------------------------------
+
+# account_001 -- e.g. "brand-1" profile on social-platform.example.com:
+# account_001|Cookie: PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE
+# account_001|User-Agent: Mozilla/5.0 (compatible; MyAudit/1.0)
+
+# account_002 -- e.g. "brand-2" profile on the same platform, different session:
+# account_002|Cookie: PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE
+
+# Example of an account explicitly registered with no special headers:
+# account_003|

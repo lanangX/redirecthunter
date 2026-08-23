@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "RedirectHunter Cookie Copier",
+  "version": "1.1.0",
+  "description": "Copy the current site's session cookies as a ready-to-paste bl-check --headers-file line, or apply a pasted cookie line to this browser to check a login-walled page manually. No servers involved -- everything stays on your machine.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "permissions": ["activeTab", "cookies", "clipboardWrite"],
+  "optional_host_permissions": ["*://*/*"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "rh-cookie-copier@redirecthunter.local",
+      "strict_min_version": "109.0"
+    }
+  }
+}

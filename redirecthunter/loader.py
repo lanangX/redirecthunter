@@ -42,12 +42,113 @@ def _validate_identifier(name: str, kind: str) -> str:
     return name
 
 
+def _split_target_list(raw_target: str) -> tuple[str, ...]:
+    """Split a target field into one or more targets on ``;``.
+
+    A target field with no ``;`` yields a one-element tuple -- the same
+    shape a single-target override has always had, just under the tuple
+    type every caller now uses. Each ``;``-separated piece is stripped;
+    empty pieces (blank entries from a stray ``;;`` or leading/trailing
+    ``;``) are dropped rather than kept as bogus empty-string "domains."
+    If every piece is blank, returns an empty tuple -- callers treat that
+    the same as "no override at all" rather than an empty match set.
+
+    Shared by all three loaders (TXT's ``|`` field, CSV's ``target``
+    column, JSON's ``"target"`` key) so the three input formats stay
+    consistent with each other, as they already are for the
+    single-target case.
+    """
+    return tuple(piece.strip() for piece in raw_target.split(";") if piece.strip())
+
+
+#: Matches a bare ``account_id`` token: letters/digits/underscore/hyphen
+#: only, must start with a letter, no dot and no colon-slash. This is what
+#: distinguishes ``account_001|https://...`` (an account-scoped row) from
+#: a plain ``https://a.com|target`` row (the pre-existing target-override
+#: syntax) -- a real URL always contains ``://`` and/or a ``.``, neither of
+#: which this pattern allows, so there is no realistic ambiguity between
+#: the two as long as input URLs are written with a scheme (as every input
+#: format in this project already requires/assumes).
+_ACCOUNT_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_\-]*$")
+
+
+def _split_account_prefix(stripped: str) -> tuple[str | None, str]:
+    """Split an optional leading ``account_id|`` off a TXT input line.
+
+    Returns ``(account_id, remainder)``. If the line has no ``|``, or its
+    first ``|``-delimited segment doesn't look like a bare account-id
+    token (see ``_ACCOUNT_ID_PATTERN``), returns ``(None, stripped)``
+    unchanged -- so every pre-existing line (with or without its own
+    ``|target`` override) parses exactly as it did before this syntax was
+    added. Only consumed by ``bl-check``/``bl-chain`` (via
+    ``row_metadata["account_id"]``); ``scan``/``crawl`` never look at this
+    key, so plain ``scan`` input is unaffected either way.
+
+    Splits on the *first* ``|`` only, matching the same precedent
+    ``_split_target_override`` and ``-H "domain.com|Name: Value"`` already
+    use -- so ``account_001|https://example.com/a|target`` is read as
+    account ``account_001`` plus the remainder ``https://example.com/a|target``,
+    which ``_split_target_override`` then splits again for its own
+    ``|target`` suffix.
+    """
+    if "|" not in stripped:
+        return None, stripped
+    head, _, rest = stripped.partition("|")
+    head = head.strip()
+    if head and _ACCOUNT_ID_PATTERN.match(head):
+        return head, rest
+    return None, stripped
+
+
+def _split_target_override(stripped: str) -> tuple[str, tuple[str, ...]]:
+    """Split a TXT line into ``(raw_url, target_overrides)``.
+
+    A row may pin its own target(s) with a ``|`` delimiter --
+    ``source_url|target`` or ``source_url|target1;target2;...`` --
+    reusing the same delimiter convention ``-H``'s scoped-header syntax
+    already uses (``"domain.com|Name: Value"``) rather than inventing a
+    new one. Splits on the *first* unescaped ``|`` only (matching that
+    same precedent), so a right-hand side that itself happens to contain
+    ``|`` is preserved verbatim. A raw, un-percent-encoded ``|`` is not a
+    legal character inside a URL per RFC 3986, so there is no realistic
+    ambiguity with a URL that contains one.
+
+    A single target (no ``;``) yields a one-element tuple -- unchanged
+    from before this field started accepting a list. See
+    :func:`_split_target_list` for the ``;`` handling.
+
+    Only consumed by ``bl-check``/``bl-chain`` call sites (via
+    ``row_metadata["target"]``) -- ``scan``/``crawl`` never look at this
+    key, so a line containing ``|`` is unaffected there.
+    """
+    if "|" not in stripped:
+        return stripped, ()
+    url_part, _, target_part = stripped.partition("|")
+    url_part = url_part.strip()
+    return url_part, _split_target_list(target_part)
+
+
 def _iter_txt(path: Path) -> Iterator[CandidateURL]:
     """Yield one CandidateURL per non-empty, non-comment line.
 
     Lines starting with ``#`` (after stripping leading whitespace) are
     treated as comments and skipped, a common convention for plain-text
     URL lists that lets operators annotate or temporarily disable entries.
+
+    A line may optionally pin its own target(s) as ``source_url|target``
+    or ``source_url|target1;target2;...`` -- see
+    ``_split_target_override``. Lines without ``|`` behave exactly as
+    before.
+
+    A line may *also* optionally carry a leading ``account_id|`` prefix
+    -- ``account_001|https://example.com/page`` or, combined with a
+    target override, ``account_001|https://example.com/page|target`` --
+    see ``_split_account_prefix``. This is how ``bl-check``/``bl-chain``
+    know which registered session/header set (from ``--accounts-file``)
+    to use for that one row; a row without the prefix is unaffected and
+    checked as a normal, unauthenticated request. Only consumed by
+    ``bl-check``/``bl-chain`` via ``row_metadata["account_id"]`` --
+    ``scan``/``crawl`` never look at this key.
     """
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -55,7 +156,16 @@ def _iter_txt(path: Path) -> Iterator[CandidateURL]:
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):
                     continue
-                yield CandidateURL(raw_url=stripped)
+                account_id, remainder = _split_account_prefix(stripped)
+                url, targets = _split_target_override(remainder)
+                if not url:
+                    continue
+                metadata: dict[str, object] = {}
+                if targets:
+                    metadata["target"] = targets
+                if account_id:
+                    metadata["account_id"] = account_id
+                yield CandidateURL(raw_url=url, row_metadata=metadata)
     except OSError as exc:
         raise LoaderError(f"Could not read input file {path}: {exc}") from exc
 
@@ -109,6 +219,26 @@ def _iter_csv(path: Path, column: str) -> Iterator[CandidateURL]:
                 if url:
                     yield CandidateURL(raw_url=url)
 
+        # Optional per-row target override column, e.g. for `bl-check`/
+        # `bl-chain` input -- recognized case-insensitively like the URL
+        # column itself, then normalized into the reserved
+        # `row_metadata["target"]` key regardless of the header's own
+        # casing (`Target`, `TARGET`, `target` all resolve the same way).
+        # The cell may hold one target or a `;`-separated list, same as
+        # TXT's `|target` field -- see `_split_target_list`.
+        # `scan`/`crawl` never look at this key, so it's inert for them.
+        target_col_index: int | None = None
+        #: Optional per-row account selector column (see TXT's
+        #: ``account_id|`` prefix / JSON's ``"account_id"`` key) -- same
+        #: case-insensitive header detection as the ``target`` column.
+        account_col_index: int | None = None
+        if header:
+            header_lower = [h.strip().lower() if h else "" for h in header]
+            if "target" in header_lower:
+                target_col_index = header_lower.index("target")
+            if "account_id" in header_lower:
+                account_col_index = header_lower.index("account_id")
+
         for row in reader:
             if not row or col_index >= len(row):
                 continue
@@ -116,9 +246,21 @@ def _iter_csv(path: Path, column: str) -> Iterator[CandidateURL]:
             if not url:
                 continue
             if header:
-                metadata = {
-                    h: v for i, (h, v) in enumerate(zip(header, row, strict=False)) if h and i != col_index
+                metadata: dict[str, str | tuple[str, ...]] = {
+                    h: v
+                    for i, (h, v) in enumerate(zip(header, row, strict=False))
+                    if h and i != col_index and i != target_col_index and i != account_col_index
                 }
+                if target_col_index is not None and target_col_index < len(row):
+                    target_value = row[target_col_index].strip()
+                    if target_value:
+                        targets = _split_target_list(target_value)
+                        if targets:
+                            metadata["target"] = targets
+                if account_col_index is not None and account_col_index < len(row):
+                    account_value = row[account_col_index].strip()
+                    if account_value:
+                        metadata["account_id"] = account_value
                 yield CandidateURL(raw_url=url, row_metadata=metadata)
             else:
                 yield CandidateURL(raw_url=url)
@@ -129,9 +271,12 @@ def _iter_json(path: Path) -> Iterator[CandidateURL]:
 
     Each array element may be either a plain string (the URL itself) or an
     object with a ``url`` key (any other keys are kept as row metadata).
-    Malformed individual entries are skipped rather than aborting the
-    entire load, consistent with this project's general policy of never
-    letting one bad row abort a large batch job.
+    A ``"target"`` key, if present, is treated the same as TXT's
+    ``|target`` field and CSV's ``target`` column -- one target or a
+    ``;``-separated list, split via ``_split_target_list`` into a
+    ``tuple[str, ...]``. Malformed individual entries are skipped rather
+    than aborting the entire load, consistent with this project's
+    general policy of never letting one bad row abort a large batch job.
     """
     try:
         raw = path.read_bytes()
@@ -157,6 +302,22 @@ def _iter_json(path: Path) -> Iterator[CandidateURL]:
             url = item["url"].strip()
             if url:
                 metadata = {k: v for k, v in item.items() if k != "url"}
+                raw_target = metadata.get("target")
+                if isinstance(raw_target, str):
+                    targets = _split_target_list(raw_target)
+                    if targets:
+                        metadata["target"] = targets
+                    else:
+                        del metadata["target"]
+                # Optional per-row account selector -- same reserved-key
+                # convention as "target", consumed only by bl-check/bl-chain.
+                raw_account = metadata.get("account_id")
+                if isinstance(raw_account, str):
+                    account_id = raw_account.strip()
+                    if account_id:
+                        metadata["account_id"] = account_id
+                    else:
+                        del metadata["account_id"]
                 yield CandidateURL(raw_url=url, row_metadata=metadata)
         # Silently skip anything else (numbers, null, malformed objects).
 

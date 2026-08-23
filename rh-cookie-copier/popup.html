@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RedirectHunter Cookie Copier</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    width: 360px;
+    margin: 0;
+    padding: 14px;
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1f2937;
+    background: #ffffff;
+  }
+  h1 {
+    font-size: 14px;
+    margin: 0 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sub {
+    font-size: 11.5px;
+    color: #6b7280;
+    margin: 0 0 10px;
+  }
+  .domain-box {
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    margin-bottom: 10px;
+    word-break: break-all;
+  }
+  .domain-box strong { color: #111827; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    background: #f3f4f6;
+    padding: 3px;
+    border-radius: 8px;
+  }
+  .tabs button {
+    flex: 1;
+    margin: 0;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tabs button.active { background: #fff; color: #1f2937; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  label {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #374151;
+    margin: 10px 0 4px;
+  }
+  select, input[type="text"], textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 12.5px;
+    background: #fff;
+    font-family: inherit;
+  }
+  textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    resize: vertical;
+  }
+  #preview { min-height: 70px; }
+  #applyInput { min-height: 70px; }
+
+  button.primary {
+    width: 100%;
+    margin-top: 12px;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover { background: #1d4ed8; }
+  button.primary:disabled { background: #9ca3af; cursor: not-allowed; }
+
+  button.secondary {
+    width: 100%;
+    margin-top: 8px;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.secondary:hover { background: #f9fafb; }
+
+  #status, #applyStatus {
+    margin-top: 10px;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    display: none;
+  }
+  .ok { display: block !important; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  .err { display: block !important; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+  .info { display: block !important; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+  .warn {
+    margin-top: 12px;
+    font-size: 10.5px;
+    color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 7px 8px;
+  }
+  .count { font-size: 11px; color: #6b7280; margin-top: 4px; }
+  .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11.5px; color: #374151; }
+  .checkbox-row input { margin: 0; }
+</style>
+</head>
+<body>
+  <h1>🍪 Cookie Copier</h1>
+  <p class="sub">For RedirectHunter <code>bl-check</code></p>
+
+  <div class="domain-box" id="domainBox">Detecting current tab…</div>
+
+  <div class="tabs">
+    <button id="tabCopyBtn" class="active">Copy from this tab</button>
+    <button id="tabApplyBtn">Apply to this tab</button>
+  </div>
+
+  <!-- ===================== COPY PANEL ===================== -->
+  <div id="copyPanel" class="panel active">
+    <label for="format">Copy format</label>
+    <select id="format">
+      <option value="scoped" selected>Scoped line — domain|Cookie: ...</option>
+      <option value="global">Global line — Cookie: ...</option>
+      <option value="raw">Raw cookie value only</option>
+    </select>
+
+    <div id="domainRow">
+      <label for="domainInput">Scope domain</label>
+      <input type="text" id="domainInput" placeholder="example.com">
+    </div>
+
+    <div class="count" id="cookieCount"></div>
+
+    <button class="primary" id="fetchBtn">Fetch cookies from this tab</button>
+
+    <label for="preview" id="previewLabel" style="display:none;">
+      Result (editable — tweak it, then copy again)
+    </label>
+    <textarea id="preview" style="display:none;" spellcheck="false"></textarea>
+    <button class="secondary" id="copyAgainBtn" style="display:none;">Copy to clipboard</button>
+
+    <div id="status"></div>
+  </div>
+
+  <!-- ===================== APPLY PANEL ===================== -->
+  <div id="applyPanel" class="panel">
+    <label for="applyInput">Paste a cookie line to apply here</label>
+    <textarea id="applyInput" spellcheck="false"
+      placeholder="Paste any of:
+domain|Cookie: name=value; name2=value2
+Cookie: name=value; name2=value2
+name=value; name2=value2"></textarea>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="reloadCheckbox" checked>
+      <label for="reloadCheckbox" style="margin:0;">Reload this tab after applying</label>
+    </div>
+
+    <button class="primary" id="applyBtn">Apply cookies to this browser</button>
+
+    <div id="applyStatus"></div>
+  </div>
+
+  <div class="warn">
+    Session cookies are equivalent to a password for that site. Only paste
+    or apply cookies you captured yourself, on your own machine — never
+    share them or commit them anywhere.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

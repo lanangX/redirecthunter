@@ -8,6 +8,7 @@ circular import.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from http.cookies import SimpleCookie
 from urllib.parse import quote, urljoin, urlparse, urlunparse
@@ -61,6 +62,99 @@ def expand_target(template: str, target: str | None, *, url_encode: bool = False
 
     value = quote(target, safe="") if url_encode else target
     return template.replace(TARGET_PLACEHOLDER, value)
+
+
+def _build_domain_pattern(domain: str) -> re.Pattern[str]:
+    """Compile the boundary-aware, scheme/``www.``-tolerant regex for ``domain``.
+
+    Ported directly from the Perl matching engine of RedirectHunter's
+    original shell-based URL preparation tooling (now retired in favor of
+    this module). See :func:`redact_domain` for the documented, intentional
+    limitations of this pattern.
+    """
+    escaped = re.escape(domain)
+
+    # Scheme: http/https, plain or percent-encoded (":" -> %3A, "/" -> %2F),
+    # including the one-or-two "%2F" variants seen in doubly-encoded data.
+    scheme = (
+        r"https?"
+        r"(?:"
+        r":(?:%2[Ff]){1,2}"  # http:%2F%2F / http:%2F
+        r"|%3[Aa](?:(?:%2[Ff]){1,2}|/{1,2})"  # http%3A%2F%2F / http%3A//
+        r"|://"  # http://
+        r")"
+    )
+    www = r"www\."
+    # One unit of "optional scheme + optional www.", so a doubled prefix
+    # (e.g. "http://www.https://example.com/", an artifact of bad data
+    # concatenation) can be swallowed entirely by repeating this unit below.
+    scheme_www = rf"(?:{scheme})?(?:{www})?"
+    trailing = r"(?:/|%2[Ff]){0,3}"
+
+    # Left boundary: the character immediately before the match must not be
+    # alphanumeric/dash, so a different, longer domain that merely ends the
+    # same way (e.g. "tmedilana.id" when searching for "medilana.id") isn't
+    # caught.
+    lboundary = r"(?<![a-z0-9\-])"
+    # Right boundary: the character immediately after the domain (and any
+    # trailing slash) must not be alphanumeric/dash/dot, so a different,
+    # longer host that merely starts the same way (e.g.
+    # "medilana.id.cheapdealuk.co.uk") isn't caught.
+    rboundary = r"(?=[^a-z0-9\-.]|\Z)"
+
+    pattern = f"{lboundary}(?:{scheme_www}){{1,2}}{escaped}{trailing}{rboundary}"
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def redact_domain(text: str, domain: str, *, token: str = TARGET_PLACEHOLDER) -> str:
+    """Replace every occurrence of ``domain`` in ``text`` with ``token``.
+
+    The counterpart to :func:`expand_target`: where that function turns a
+    ``{TARGET}`` template into a real URL, this function turns a real URL
+    (or a line containing one) back into a ``{TARGET}`` template, ready for
+    ``redirecthunter scan --target``.
+
+    Recognizes ``domain`` regardless of an optional scheme (``http``/
+    ``https``, plain or percent-encoded, including partially-encoded
+    ``%2F`` variants), an optional ``www.`` prefix, and optional trailing
+    slash(es) (plain or percent-encoded). A match is rejected if it is
+    really a substring of a different domain — guarded on both sides:
+    the character immediately before the match must not be alphanumeric
+    or a dash (rejects e.g. ``tmedilana.id`` when searching for
+    ``medilana.id``), and the character immediately after must not be
+    alphanumeric, a dash, or a dot (rejects e.g.
+    ``medilana.id.cheapdealuk.co.uk``).
+
+    Ported from the Perl matching engine of RedirectHunter's original
+    shell-based URL preparation tooling (now retired), and preserves three
+    known, intentional limitations of that engine rather than fixing them
+    (fixing them was out of scope for this port — see
+    ``tests/test_target_replace.py`` for a named test proving each one):
+
+    1. Partially-broken percent-encoding (e.g. a truncated ``%2F`` missing
+       its final character) is not recognized as a scheme, so the domain
+       is left unreplaced. This is source-data corruption, not a regex bug.
+    2. Two URLs concatenated with no separator (e.g.
+       ``...domain.idhttp://other.com/...``) does not trigger a
+       replacement at that boundary, because the following ``h`` of
+       ``http`` fails the right-boundary check. Rare; an artifact of bad
+       data concatenation, not a valid URL shape.
+    3. An encoded Google ``site:`` operator glued directly to the domain
+       (e.g. ``site%3Adomain.id``) can fail the left-boundary check,
+       because the final ``A`` of ``%3A`` is alphanumeric. Also rare.
+
+    Args:
+        text: The line/text to search, typically one URL per call.
+        domain: The bare domain to search for, e.g. ``"medilana.id"``.
+        token: The replacement token. Defaults to
+            :data:`TARGET_PLACEHOLDER`.
+
+    Returns:
+        ``text`` with every matched occurrence of ``domain`` replaced by
+        ``token``. Text with no match is returned unchanged.
+    """
+    pattern = _build_domain_pattern(domain)
+    return pattern.sub(token, text)
 
 
 def normalize_url(url: str, *, default_scheme: str = "https") -> str:
@@ -252,6 +346,7 @@ __all__ = [
     "MissingTargetError",
     "contains_target_placeholder",
     "expand_target",
+    "redact_domain",
     "normalize_url",
     "resolve_relative_url",
     "is_valid_http_url",

@@ -46,6 +46,50 @@ from redirecthunter.models import (
 from redirecthunter.plugins.base import DetectionContext
 from redirecthunter.utils import parse_set_cookie_headers, resolve_relative_url
 
+#: Href prefixes that never point anywhere useful to an operator auditing
+#: redirect destinations -- in-page anchors, script hooks, and non-web
+#: schemes. Skipped so the first *navigable* link wins instead of, e.g.,
+#: a "skip to content" accessibility anchor that happens to appear first
+#: in document order.
+_NON_NAVIGABLE_HREF_PREFIXES = ("#", "javascript:", "mailto:", "tel:")
+
+
+def _extract_body_link(context: DetectionContext) -> str | None:
+    """Return the raw ``href`` of the first navigable ``<a>`` tag in the body, if any.
+
+    Reuses :attr:`DetectionContext.html_tree` -- the same lazily-parsed,
+    cached selectolax tree the ``meta_refresh``/``javascript`` plugins
+    already consult -- so this costs nothing extra on responses that were
+    going to be parsed anyway, and correctly returns ``None`` for HEAD
+    responses (no body) or non-HTML content (no tree).
+
+    This is a passive observation, not a redirect-detection signal: it
+    does not influence ``redirect_type`` classification or pipeline
+    precedence. Many interstitial/"safe redirect" pages combine an
+    automatic redirect (meta-refresh or JS) *with* a manual "click here"
+    fallback link for browsers that block the automatic one -- operators
+    auditing those pages want to see that fallback link even though the
+    page already classified as ``meta_refresh``/``javascript``. It is
+    just as useful on pages with *no* detected redirect at all: a bare
+    "please click to continue" page that isn't a redirect by any of the
+    other plugins' definitions, but is still an outbound link worth
+    exporting.
+    """
+    tree = context.html_tree
+    if tree is None:
+        return None
+
+    for anchor in tree.css("a"):
+        href = anchor.attributes.get("href")
+        if not href:
+            continue
+        href = href.strip()
+        if not href or href.lower().startswith(_NON_NAVIGABLE_HREF_PREFIXES):
+            continue
+        return href
+
+    return None
+
 
 @dataclass(slots=True)
 class HopAnalysis:
@@ -61,6 +105,8 @@ class HopAnalysis:
         content_type: Raw ``Content-Type`` header value, if present.
         content_length: Parsed ``Content-Length`` header value, if present
             and numeric.
+        body_link: Raw href of the first navigable ``<a>`` tag found in
+            this response's body, if any. See :func:`_extract_body_link`.
     """
 
     hop: RedirectHop
@@ -69,6 +115,7 @@ class HopAnalysis:
     fingerprint: FingerprintInfo
     content_type: str | None
     content_length: int | None
+    body_link: str | None = None
 
 
 class ResponseAnalyzer:
@@ -165,6 +212,7 @@ class ResponseAnalyzer:
             fingerprint=fingerprint,
             content_type=context.get_header("content-type"),
             content_length=content_length,
+            body_link=_extract_body_link(context),
         )
 
     def build_result(
@@ -228,6 +276,7 @@ class ResponseAnalyzer:
             redirect_type=first_hop.redirect_type,
             location=first_hop.location_header,
             final_url=terminal_hop.url,
+            body_link=terminal_hop_analysis.body_link,
             redirect_chain=redirect_chain,
             hop_count=len(redirect_chain),
             server=terminal_hop.server_header,

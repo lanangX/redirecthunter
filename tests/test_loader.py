@@ -22,6 +22,164 @@ class TestTxtLoader:
         assert count_candidates(config) == 3
 
 
+class TestTargetOverrideTxt:
+    """``|target`` (single) and ``|target1;target2;...`` (multi) row overrides."""
+
+    def test_no_override(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://a.com"
+        assert "target" not in candidates[0].row_metadata
+
+    def test_single_target_unchanged(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|medilana.id\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://a.com"
+        assert candidates[0].row_metadata["target"] == ("medilana.id",)
+
+    def test_multi_target_split_on_semicolon(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|medilana.co.id;form.medilana.com;img.medilana.my.id\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == (
+            "medilana.co.id",
+            "form.medilana.com",
+            "img.medilana.my.id",
+        )
+
+    def test_multi_target_strips_whitespace_around_entries(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|medilana.co.id ; form.medilana.com ;  img.medilana.my.id  \n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == (
+            "medilana.co.id",
+            "form.medilana.com",
+            "img.medilana.my.id",
+        )
+
+    def test_multi_target_drops_empty_entries(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|medilana.co.id;;form.medilana.com;\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == ("medilana.co.id", "form.medilana.com")
+
+    def test_all_blank_targets_treated_as_no_override(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|;;;\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://a.com"
+        assert "target" not in candidates[0].row_metadata
+
+    def test_bare_trailing_pipe_treated_as_no_override(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert "target" not in candidates[0].row_metadata
+
+
+class TestAccountIdTxt:
+    """``account_id|`` (leading) prefix for per-row session/header selection."""
+
+    def test_legacy_line_has_no_account_id(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("https://a.com|target\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert "account_id" not in candidates[0].row_metadata
+
+    def test_account_prefix_alone(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("account_001|https://a.com\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://a.com"
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+
+    def test_account_prefix_with_target_override(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text("account_001|https://a.com|target1;target2\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://a.com"
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+        assert candidates[0].row_metadata["target"] == ("target1", "target2")
+
+    def test_two_accounts_same_domain(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text(
+            "account_001|https://example.com/a\naccount_002|https://example.com/b\n"
+        )
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].raw_url == "https://example.com/a"
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+        assert candidates[1].raw_url == "https://example.com/b"
+        assert candidates[1].row_metadata["account_id"] == "account_002"
+
+    def test_public_line_between_account_lines_unaffected(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text(
+            "account_001|https://a.com\nhttps://public.com\naccount_002|https://b.com\n"
+        )
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+        assert "account_id" not in candidates[1].row_metadata
+        assert candidates[1].raw_url == "https://public.com"
+        assert candidates[2].row_metadata["account_id"] == "account_002"
+
+    def test_same_account_reused_across_rows_is_consistent(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.txt"
+        f.write_text(
+            "account_057|https://a.com\naccount_057|https://b.com\naccount_057|https://c.com\n"
+        )
+        config = ScanConfig(input_path=f, input_format=InputFormat.TXT)
+        candidates = list(load_candidates(config))
+        assert all(c.row_metadata["account_id"] == "account_057" for c in candidates)
+
+
+class TestAccountIdCsvJson:
+    """Representative ``account_id`` coverage for CSV/JSON (TXT is covered exhaustively above)."""
+
+    def test_csv_account_id_column(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.csv"
+        f.write_text("url,account_id\nhttps://a.com,account_001\nhttps://b.com,\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.CSV, input_column="url")
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+        assert "account_id" not in candidates[1].row_metadata
+
+    def test_csv_account_id_column_case_insensitive_header(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.csv"
+        f.write_text("url,Account_ID\nhttps://a.com,account_001\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.CSV, input_column="url")
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+
+    def test_json_account_id_key(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.json"
+        f.write_text(json.dumps([{"url": "https://a.com", "account_id": "account_001"}]))
+        config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["account_id"] == "account_001"
+
+    def test_json_blank_account_id_key_dropped(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.json"
+        f.write_text(json.dumps([{"url": "https://a.com", "account_id": "  "}]))
+        config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
+        candidates = list(load_candidates(config))
+        assert "account_id" not in candidates[0].row_metadata
+
+
 class TestCsvLoader:
     def test_with_header(self, tmp_path: Path) -> None:
         f = tmp_path / "u.csv"
@@ -58,6 +216,29 @@ class TestCsvLoader:
         assert candidates[0].row_metadata == {"campaign": "spring-launch", "owner": "marketing"}
 
 
+class TestCsvTargetOverride:
+    def test_single_target_column(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.csv"
+        f.write_text("url,target\nhttps://a.com,medilana.id\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.CSV, input_column="url")
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == ("medilana.id",)
+
+    def test_multi_target_column_case_insensitive_header(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.csv"
+        f.write_text("url,Target\nhttps://a.com,medilana.co.id;form.medilana.com\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.CSV, input_column="url")
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == ("medilana.co.id", "form.medilana.com")
+
+    def test_no_target_column(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.csv"
+        f.write_text("url,notes\nhttps://a.com,first\n")
+        config = ScanConfig(input_path=f, input_format=InputFormat.CSV, input_column="url")
+        candidates = list(load_candidates(config))
+        assert "target" not in candidates[0].row_metadata
+
+
 class TestJsonLoader:
     def test_string_array(self, tmp_path: Path) -> None:
         f = tmp_path / "u.json"
@@ -80,6 +261,31 @@ class TestJsonLoader:
         config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
         with pytest.raises(LoaderError):
             list(load_candidates(config))
+
+
+class TestJsonTargetOverride:
+    def test_single_target_key(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.json"
+        f.write_text(json.dumps([{"url": "https://a.com", "target": "medilana.id"}]))
+        config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == ("medilana.id",)
+
+    def test_multi_target_key(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.json"
+        f.write_text(
+            json.dumps([{"url": "https://a.com", "target": "medilana.co.id;form.medilana.com"}])
+        )
+        config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
+        candidates = list(load_candidates(config))
+        assert candidates[0].row_metadata["target"] == ("medilana.co.id", "form.medilana.com")
+
+    def test_all_blank_target_key_dropped(self, tmp_path: Path) -> None:
+        f = tmp_path / "u.json"
+        f.write_text(json.dumps([{"url": "https://a.com", "target": ";;"}]))
+        config = ScanConfig(input_path=f, input_format=InputFormat.JSON)
+        candidates = list(load_candidates(config))
+        assert "target" not in candidates[0].row_metadata
 
 
 class TestSqliteLoader:

@@ -1,0 +1,59 @@
+# Example --headers-file for `redirecthunter bl-check --headers-file`.
+#
+# Usage:
+#   redirecthunter bl-check backlinks.txt -d medilana.id --headers-file this-file.txt
+#
+# One header per line, same syntax as -H on the command line:
+#   Name: Value                    -> sent with every request in the run
+#   domain.com|Name: Value         -> sent only to that domain (+ subdomains)
+#
+# Blank lines and lines starting with # are ignored.
+#
+# --------------------------------------------------------------------------
+# HOW TO GET THE RIGHT COOKIE VALUE (this is the part people usually get
+# wrong -- see below for why the Application/Storage/Cookies panel is the
+# WRONG place to copy from):
+#
+#   1. In a real browser, log in normally to the site (e.g.
+#      marketplace.whmcs.com) until you're on a page that only shows up
+#      when you're authenticated.
+#   2. Open DevTools -> the *Network* tab (not Application/Storage/Cookies).
+#   3. Reload the page.
+#   4. Click the top document request (the one for the page itself, status
+#      200) in the request list.
+#   5. Look at "Request Headers" and find the line that starts with
+#      "Cookie:". Copy everything after "Cookie: " -- that whole string,
+#      as-is, semicolons and all.
+#   6. Paste it as the value below.
+#
+# Why the Network tab, not Application > Cookies:
+#   - The Application panel lists EVERY cookie stored for that origin,
+#     including ones that have nothing to do with your login (Google
+#     Analytics' _ga/_gid, ad/consent cookies like _gcl_au, third-party
+#     widgets, etc). There's no reliable way to tell just by looking at
+#     names which one or three actually matter for authentication --
+#     that's site-specific and undocumented.
+#   - The Cookie header on an actual outgoing request is exactly what the
+#     browser itself decided to send for that request -- the same
+#     information the server uses to recognize your session. Copying that
+#     verbatim removes all the guesswork; you don't need to know which
+#     individual cookie name is "the" session cookie.
+#
+# Keep this file OUT of version control once you fill in real values --
+# these are live session credentials, equivalent to being logged in as
+# you. Treat it like a password file. (Add its real filename to
+# .gitignore; this example file is safe to commit since it has no real
+# values.)
+# --------------------------------------------------------------------------
+
+# Applied to every URL in the input file, regardless of host:
+# User-Agent: Mozilla/5.0 (compatible; MyAudit/1.0)
+
+# Applied only to marketplace.whmcs.com (and subdomains):
+# marketplace.whmcs.com|Cookie: PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE
+
+# Applied only to linkedin.com (and subdomains, e.g. www.linkedin.com):
+# linkedin.com|Cookie: PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE
+
+# Applied only to facebook.com (and subdomains, e.g. web.facebook.com):
+# facebook.com|Cookie: PASTE_THE_FULL_COOKIE_HEADER_VALUE_HERE

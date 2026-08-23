@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "redirecthunter"
-version = "1.0.0"
+version = "1.1.0"
 description = "HTTP Redirect Discovery and Validation Framework for security auditing, QA, SEO research, and migration validation."
 readme = "README.md"
 license = { text = "MIT" }
@@ -48,6 +48,12 @@ dependencies = [
 
 [project.optional-dependencies]
 speed = ["uvloop>=0.19.0; sys_platform != 'win32'"]
+js = [
+    # For `bl-check --browser` -- a ~300MB Chromium binary shouldn't be a
+    # side effect of installing the base package. After this:
+    #   playwright install chromium
+    "playwright>=1.40.0",
+]
 dev = [
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.6",
@@ -55,6 +61,7 @@ dev = [
     "respx>=0.21.1",
     "ruff>=0.4.4",
     "mypy>=1.10.0",
+    "playwright>=1.40.0",
 ]
 
 [project.urls]
@@ -65,6 +72,7 @@ Documentation = "https://github.com/redirecthunter/redirecthunter/tree/main/docs
 
 [project.scripts]
 redirecthunter = "redirecthunter.cli:app"
+rh = "redirecthunter.cli:app"
 
 [tool.setuptools.packages.find]
 include = ["redirecthunter*"]

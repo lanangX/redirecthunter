@@ -1,30 +1,32 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.egg-info/
-.eggs/
-build/
-dist/
 .venv/
 venv/
+.archive-logs/
 
-# Testing
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
+# Test / coverage artifacts
 .coverage
+.coverage.*
+.pytest_cache/
 htmlcov/
 
-# RedirectHunter runtime artifacts
-*.db
-*.db-wal
-*.db-shm
-!examples/urls.db
-*.log
+# Type-checker cache
+.mypy_cache/
+.ruff_cache/
 
-# Editors / OS
-.vscode/
-.idea/
-*.swp
-.DS_Store
+# Generated example database (see examples/README.md to regenerate)
+examples/urls.db
+all-link/
+
+# Local scan output
+*.db
+*.zip
+project-backup.sh
+
+# bl-check --headers-file: real session cookies, never commit these.
+# (examples/bl-check-headers.txt itself has no real values and is fine to
+# keep -- only files you copy it to should be excluded. Suggested naming
+# convention for your own copy: something ending in .headers.txt.)
+*.headers.txt
+

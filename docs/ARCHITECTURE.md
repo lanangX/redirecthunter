@@ -1,5 +1,10 @@
 # Architecture
 
+> This document describes the architecture as it stands in the shipped
+> code. For work in flight that will change it (new modules, new CLI
+> commands not yet merged), see `../MEMORY.md` rather than looking for it
+> here — this file is updated once a change actually lands.
+
 RedirectHunter is organized as a pipeline of small, single-responsibility
 modules, each independently testable and connected only through the
 Pydantic models in `models.py`. This document explains how data flows
@@ -20,8 +25,14 @@ redirecthunter/
 ├── detector.py        Orchestrates the redirect-detection plugin pipeline
 ├── plugins/            One module per detection strategy (see below)
 ├── fingerprint.py     Header-based server/CDN/Cloudflare classification
-├── database.py         aiosqlite persistence (scan/results/chain/headers)
-├── exporter.py          Streaming CSV/JSON/SQLite export
+├── database.py         aiosqlite persistence (scan/results/chain/headers,
+│                    plus crawls/crawl_pages/crawl_links)
+├── run.py                Generic RunLifecycle (create/exists/get_config/
+│                    update_status/resolve_id/delete) shared by crawl and
+│                    backlink-check's lifecycle tables. See CONTEXT.md's
+│                    "Run" entry.
+├── export/               Streaming CSV/JSON/SQLite export (see below)
+├── crawler.py            Async BFS site crawler (see "Crawl mode" below)
 ├── cli.py                Typer commands + Rich progress/tables
 ├── logger.py               Centralized Rich logging setup
 └── utils.py                 Dependency-free helpers (URL expansion, etc.)
@@ -146,6 +157,81 @@ memory — each batch fetches its redirect-chain hops via a single `IN
 
 See [`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md) for the full table
 reference.
+
+## Crawl mode
+
+`crawl` (backed by `crawler.py`) is the "audit a whole site" counterpart
+to `scan`: instead of validating a *fixed* list of candidate URLs, it
+starts from one or more seeds and discovers its own work by following
+links found on each page it fetches. That one difference — dynamic vs.
+fixed work list — is why it's a separate module rather than a mode flag
+on `Engine`:
+
+- **Termination can't use sentinel values.** `Engine`'s bounded queue is
+  fed by a single producer that knows the total candidate count up front;
+  a crawl's frontier grows *while it runs*, so `Crawler.run` instead uses
+  an **unbounded** `asyncio.Queue` where every worker is both a consumer
+  and a producer (fetching a page can enqueue more work), and termination
+  is detected via `asyncio.Queue.join()` — every `put()` for a page's
+  discovered links happens before that page's own `task_done()`, so
+  `join()` only returns once the entire frontier, including everything
+  discovered along the way, has actually drained.
+- **One fetch does two jobs instead of one.** Where `Engine` only has to
+  validate a redirect chain, `Crawler._process_page` also has to extract
+  on-page SEO signals (title/meta description/H1s via `selectolax`, same
+  parser `plugins/meta_refresh.py` already uses) and discover further
+  frontier items — different enough shapes of work that duplicating
+  `Engine`'s loop with a few crawl-specific branches would make both
+  harder to follow than two loops with a small shared foundation
+  (`MAX_BODY_BYTES`, `RateLimiter`, and the retry/backoff shape are
+  reused from `engine.py`; the dispatch loop around them isn't).
+
+**Page vs. link, and why a "broken link" can show up in either table.**
+An internal link within crawl scope (`--max-depth`/`--max-pages`) is
+promoted straight to a full page fetch — a dead one just becomes a
+`crawl_pages` row with `status_code >= 400`, not a separate "broken link"
+record. The `crawl_links` table exists for everything that *isn't*
+crawled as a page: external links, out-of-scope internal links, and every
+occurrence of an internal link after its first (a page is only ever
+fetched once per crawl no matter how many pages link to it). The
+underlying HTTP check for `crawl_links` rows *is* deduplicated per crawl
+(the same external URL linked from a hundred pages is requested once),
+but every occurrence still gets its own row, so "which pages link to this
+broken URL" stays answerable. See
+[`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md#crawl-mode-tables) for the
+full column reference and `crawler.py`'s module docstring for the
+frontier-item-level detail.
+
+`crawl-export` is a small, dedicated streaming CSV/JSON writer rather
+than a `crawl` mode on `Exporter` — a crawled page and a checked link
+don't share `RedirectResult`'s columns at all, and both simply stream
+straight from `Database.iter_crawl_pages`/`iter_crawl_links` with no
+per-row transformation the `ExportFilter` abstraction would otherwise be
+for.
+
+## The export subpackage
+
+`export/` mirrors `plugins/`'s one-module-per-concern layout, rather than
+being one flat `exporter.py`:
+
+- `filters.py` — `ExportFilter` / `ExportError`. `ExportFilter` is the one
+  place row-level "does this result pass?" logic lives, shared between
+  `export` and `show` so the same flag (`--redirects-only`,
+  `--status-code`, ...) means the same thing in both places.
+- `csv_writer.py` / `json_writer.py` — one streaming writer function per
+  format, each taking a `Database`, `scan_id`, output `Path`, and
+  `ExportFilter`, and returning the row count written. Neither knows
+  about the other, or about SQLite.
+- `service.py` — `Exporter`, the only class outside code should import
+  (re-exported from `export/__init__.py`). It owns nothing but the
+  format dispatch: CSV/JSON delegate to the writers above, SQLite
+  delegates straight to `Database.export_scan_to_sqlite` (a raw-SQL
+  `ATTACH DATABASE` copy, which is why filtered SQLite export isn't
+  supported — there's no per-row loop to filter).
+
+Only `export/__init__.py`'s re-exports (`Exporter`, `ExportFilter`,
+`ExportError`, `CSV_COLUMNS`) are public; `cli.py` and tests import from
+`redirecthunter.export`, never from a specific submodule.
 
 ## Dependency injection
 
