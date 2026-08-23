@@ -705,6 +705,59 @@ async def _block_heavy_resources(route: object) -> None:
         await route.continue_()  # type: ignore[attr-defined]
 
 
+def _split_cookie_header(
+    request_headers: Mapping[str, str] | None,
+) -> tuple[str | None, dict[str, str]]:
+    """Pulls the ``Cookie`` entry (matched case-insensitively, same as real
+    HTTP header lookup) out of a headers dict for `check_one_browser`.
+
+    Returns ``(cookie_value, remaining_headers)``. Everything except the
+    cookie still goes through `page.set_extra_http_headers` exactly as
+    before -- only the cookie itself needs the different
+    `context.add_cookies()` treatment (see `check_one_browser`'s
+    docstring for why).
+    """
+    if not request_headers:
+        return None, {}
+    cookie_value: str | None = None
+    remaining: dict[str, str] = {}
+    for name, value in request_headers.items():
+        if name.strip().lower() == "cookie":
+            cookie_value = value
+        else:
+            remaining[name] = value
+    return cookie_value, remaining
+
+
+def _cookie_header_to_playwright_cookies(cookie_header: str, url: str) -> list[dict[str, str]]:
+    """Turns a raw ``"name=value; name2=value2"`` Cookie header value into
+    individual Playwright cookie objects for `context.add_cookies()`.
+
+    Scoped with a leading-dot domain (``.example.com``) rather than a
+    bare host, so the cookie is also visible to same-site subdomains
+    (e.g. a SPA on ``x.com`` whose own JS calls ``api.x.com`` after the
+    page loads) -- matching how a real browser's own ``Set-Cookie``
+    almost always scopes a session cookie, rather than the narrower
+    host-only default `add_cookies()` would otherwise apply.
+    """
+    hostname = urlparse(url).hostname
+    if not hostname:
+        return []
+    domain = hostname if hostname.startswith(".") else f".{hostname}"
+    cookies: list[dict[str, str]] = []
+    for part in cookie_header.split(";"):
+        part = part.strip()
+        if not part or "=" not in part:
+            continue
+        name, _, value = part.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if not name:
+            continue
+        cookies.append({"name": name, "value": value, "domain": domain, "path": "/"})
+    return cookies
+
+
 async def check_one_browser(
     context: BrowserContext,
     url: str,
@@ -725,18 +778,42 @@ async def check_one_browser(
     directly comparable row for row -- ported from what was
     `backlink_checker_js.py`'s `check_one`.
 
-    ``request_headers``, when given, is set via `page.set_extra_http_headers`
-    -- scoped to this one page/URL, not the shared `context` -- so a
-    domain-scoped cookie (see `resolve_domain_headers`) never leaks onto
-    the other concurrent tabs checking unrelated hosts.
+    Any non-``Cookie`` entry in ``request_headers`` is set via
+    `page.set_extra_http_headers` -- scoped to this one page/URL, not the
+    shared `context` -- so a domain-scoped header (see
+    `resolve_domain_headers`) never leaks onto the other concurrent tabs
+    checking unrelated hosts.
+
+    A ``Cookie`` entry gets different treatment: `context.add_cookies()`
+    instead. `set_extra_http_headers` only appends a raw ``Cookie:`` line
+    to the outgoing network request -- it never populates the browser's
+    actual cookie jar, so a page whose own JavaScript re-reads
+    `document.cookie` to decide whether it's logged in (any client-
+    rendered SPA that keeps auth state there instead of only ever
+    looking at the incoming request header -- e.g. X/Twitter) sees no
+    cookie at all and behaves as logged-out, silently defeating the
+    whole point of pasting a session cookie in for that page. That's
+    also what produces the "page never finishes loading" symptom
+    (`domcontentloaded` timing out) this was added to fix, on top of the
+    login-wall/blocked-content result a purely header-based cookie would
+    already have produced. Because `add_cookies()` writes to the
+    *shared* `context`'s cookie jar rather than being page-scoped like
+    the header call, the cookie is added right before navigation and
+    removed again in the `finally` block below by exact name/domain/path
+    -- preserving the same "never leaks onto other concurrent tabs"
+    guarantee the header-only approach gave for free.
     """
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
     result = BacklinkResult(source_url=url)
     page: Page = await context.new_page()
+    cookie_value, other_headers = _split_cookie_header(request_headers)
+    added_cookies = _cookie_header_to_playwright_cookies(cookie_value, url) if cookie_value else []
     try:
-        if request_headers:
-            await page.set_extra_http_headers(dict(request_headers))
+        if other_headers:
+            await page.set_extra_http_headers(other_headers)
+        if added_cookies:
+            await context.add_cookies(added_cookies)  # type: ignore[arg-type]
         try:
             response = await page.goto(url, timeout=nav_timeout_ms, wait_until="domcontentloaded")
         except PlaywrightTimeoutError:
@@ -871,6 +948,15 @@ async def check_one_browser(
 
         return result
     finally:
+        if added_cookies:
+            # Scrub exactly the cookies this check added -- by name +
+            # domain + path, not a blanket `clear_cookies()` -- so a
+            # concurrent tab's own cookies (a different account, or a
+            # different domain entirely) are never touched.
+            for cookie in added_cookies:
+                await context.clear_cookies(
+                    name=cookie["name"], domain=cookie["domain"], path=cookie["path"]
+                )
         await page.close()
 
 

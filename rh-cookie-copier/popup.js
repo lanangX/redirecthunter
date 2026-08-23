@@ -55,13 +55,29 @@ const ACCOUNT_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/;
 function sanitizeAccountId(raw) {
   const trimmed = raw.trim();
   // Collapse any run of disallowed characters (dots, spaces, etc.) into
-  // a single "-", e.g. "marketplace.whmcs.com-jasapasangngt" ->
-  // "marketplace-whmcs-com-jasapasangngt".
+  // a single "-", e.g. "marketplace.whmcs.com" -> "marketplace-whmcs-com".
   let cleaned = trimmed.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/-+/g, "-");
   // The pattern also requires starting with a letter -- strip any
   // leading digits/hyphens/underscores rather than guess a prefix.
   cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
   return cleaned;
+}
+
+/**
+ * Combines the "Account domain" and "Account username / label" fields into
+ * one full account_id, e.g. domain "marketplace.whmcs.com" + username
+ * "jasapasangngt" -> "marketplace-whmcs-com-jasapasangngt". Lets the user
+ * type just the short, memorable part (the username) while the domain --
+ * already known from the current tab -- is filled in for them, the same
+ * way "Scope domain" is auto-filled for the "scoped" format. Returns ""
+ * if either half is missing/unusable, so callers can treat that as
+ * "not ready yet" without guessing.
+ */
+function computeAccountId(domainRaw, userRaw) {
+  const domainPart = sanitizeAccountId(domainRaw);
+  const userPart = sanitizeAccountId(userRaw);
+  if (!domainPart || !userPart) return "";
+  return `${domainPart}-${userPart}`.replace(/-+/g, "-");
 }
 
 function buildLine(format, domain, accountId, cookieValue) {
@@ -125,7 +141,9 @@ async function main() {
   const domainBox = document.getElementById("domainBox");
   const domainInput = document.getElementById("domainInput");
   const domainRow = document.getElementById("domainRow");
-  const accountInput = document.getElementById("accountInput");
+  const accountDomainInput = document.getElementById("accountDomainInput");
+  const accountUserInput = document.getElementById("accountUserInput");
+  const accountIdPreview = document.getElementById("accountIdPreview");
   const accountRow = document.getElementById("accountRow");
   const formatSelect = document.getElementById("format");
   const fetchBtn = document.getElementById("fetchBtn");
@@ -158,27 +176,25 @@ async function main() {
 
   domainBox.innerHTML = `Current tab: <strong>${hostname}</strong>`;
   domainInput.value = hostname;
+  accountDomainInput.value = hostname; // auto-filled, same as domainInput -- still editable
 
   formatSelect.addEventListener("change", () => {
     domainRow.style.display = formatSelect.value === "scoped" ? "block" : "none";
     accountRow.style.display = formatSelect.value === "account" ? "block" : "none";
   });
 
-  // Normalize the account_id as the user types (e.g. on blur) so the
-  // preview/clipboard line always matches what the CLI will actually
-  // recognize as an account row -- see sanitizeAccountId() above.
-  accountInput.addEventListener("blur", () => {
-    const original = accountInput.value;
-    const cleaned = sanitizeAccountId(original);
-    if (cleaned !== original.trim() && original.trim() !== "") {
-      accountInput.value = cleaned;
-      setStatus(
-        "status",
-        "info",
-        `Account ID normalized to "${cleaned}" (letters/digits/_/- only, must start with a letter — dots aren't allowed in account_id).`
-      );
-    }
-  });
+  // Live preview of the combined account_id as either half changes, so
+  // the user can see/verify the exact string that will end up in
+  // bl-check-accounts.txt before they ever click Fetch.
+  function refreshAccountIdPreview() {
+    const full = computeAccountId(accountDomainInput.value, accountUserInput.value);
+    accountIdPreview.textContent = full
+      ? `Full account_id: ${full}`
+      : "Enter a username/label to generate the account_id.";
+  }
+  accountDomainInput.addEventListener("input", refreshAccountIdPreview);
+  accountUserInput.addEventListener("input", refreshAccountIdPreview);
+  refreshAccountIdPreview();
 
   // ---------------- COPY PANEL ----------------
 
@@ -193,18 +209,16 @@ async function main() {
         return;
       }
 
+      let accountId = "";
       if (formatSelect.value === "account") {
-        const cleaned = sanitizeAccountId(accountInput.value);
-        if (!cleaned) {
+        accountId = computeAccountId(accountDomainInput.value, accountUserInput.value);
+        if (!accountId) {
           setStatus(
             "status",
             "err",
-            "Enter the account_id first — it must match the account_id used in your input file."
+            "Enter the account username/label first (the domain is filled in for you)."
           );
           return;
-        }
-        if (cleaned !== accountInput.value.trim()) {
-          accountInput.value = cleaned;
         }
       }
 
@@ -221,7 +235,6 @@ async function main() {
 
       const cookieValue = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
       const scopeDomain = domainInput.value.trim() || hostname;
-      const accountId = accountInput.value.trim();
       const line = buildLine(formatSelect.value, scopeDomain, accountId, cookieValue);
 
       preview.value = line;
