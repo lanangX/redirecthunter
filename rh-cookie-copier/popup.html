@@ -135,6 +135,7 @@
     padding: 7px 8px;
   }
   .count { font-size: 11px; color: #6b7280; margin-top: 4px; }
+  .hint { font-size: 10.5px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
   .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11.5px; color: #374151; }
   .checkbox-row input { margin: 0; }
 </style>
@@ -154,7 +155,8 @@
   <div id="copyPanel" class="panel active">
     <label for="format">Copy format</label>
     <select id="format">
-      <option value="scoped" selected>Scoped line — domain|Cookie: ...</option>
+      <option value="scoped" selected>Scoped line — domain|Cookie: ... (headers-file)</option>
+      <option value="account">Account line — account_id|Cookie: ... (accounts-file)</option>
       <option value="global">Global line — Cookie: ...</option>
       <option value="raw">Raw cookie value only</option>
     </select>
@@ -162,6 +164,19 @@
     <div id="domainRow">
       <label for="domainInput">Scope domain</label>
       <input type="text" id="domainInput" placeholder="example.com">
+      <div class="hint">Paste this line into your <code>bl-check-headers.txt</code>.</div>
+    </div>
+
+    <div id="accountRow" style="display:none;">
+      <label for="accountInput">Account ID</label>
+      <input type="text" id="accountInput" placeholder="account_001">
+      <div class="hint">
+        Must match the <code>account_id</code> used in your input file's
+        <code>account_id|URL</code> rows. Paste this line into your
+        <code>bl-check-accounts.txt</code>. Repeat per account — same
+        account_id, one line per header — if an account needs more than
+        one header (e.g. Cookie + User-Agent).
+      </div>
     </div>
 
     <div class="count" id="cookieCount"></div>

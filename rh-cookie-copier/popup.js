@@ -42,16 +42,18 @@ async function ensureHostPermission(url) {
   });
 }
 
-function buildLine(format, domain, cookieValue) {
+function buildLine(format, domain, accountId, cookieValue) {
   if (format === "raw") return cookieValue;
   if (format === "global") return `Cookie: ${cookieValue}`;
+  if (format === "account") return `${accountId}|Cookie: ${cookieValue}`;
   return `${domain}|Cookie: ${cookieValue}`;
 }
 
 /**
- * Accepts any of the three formats a user might paste and reduces it to
- * the raw "name=value; name2=value2" cookie string.
+ * Accepts any of the formats a user might paste and reduces it to the raw
+ * "name=value; name2=value2" cookie string.
  *   - "domain.com|Cookie: name=value; ..."
+ *   - "account_001|Cookie: name=value; ..."
  *   - "Cookie: name=value; ..."
  *   - "name=value; ..."
  * Also tolerates surrounding whitespace/newlines from a sloppy paste.
@@ -59,7 +61,7 @@ function buildLine(format, domain, cookieValue) {
 function extractCookieValue(pasted) {
   let text = pasted.trim();
   const pipeIndex = text.indexOf("|");
-  if (pipeIndex !== -1 && /^[a-z0-9.-]+$/i.test(text.slice(0, pipeIndex).trim())) {
+  if (pipeIndex !== -1 && /^[a-z0-9._-]+$/i.test(text.slice(0, pipeIndex).trim())) {
     text = text.slice(pipeIndex + 1).trim();
   }
   const match = text.match(/^cookie\s*:\s*/i);
@@ -101,6 +103,8 @@ async function main() {
   const domainBox = document.getElementById("domainBox");
   const domainInput = document.getElementById("domainInput");
   const domainRow = document.getElementById("domainRow");
+  const accountInput = document.getElementById("accountInput");
+  const accountRow = document.getElementById("accountRow");
   const formatSelect = document.getElementById("format");
   const fetchBtn = document.getElementById("fetchBtn");
   const copyAgainBtn = document.getElementById("copyAgainBtn");
@@ -135,6 +139,7 @@ async function main() {
 
   formatSelect.addEventListener("change", () => {
     domainRow.style.display = formatSelect.value === "scoped" ? "block" : "none";
+    accountRow.style.display = formatSelect.value === "account" ? "block" : "none";
   });
 
   // ---------------- COPY PANEL ----------------
@@ -147,6 +152,15 @@ async function main() {
       const granted = await ensureHostPermission(tab.url);
       if (!granted) {
         setStatus("status", "err", "Permission was not granted, so cookies can't be read.");
+        return;
+      }
+
+      if (formatSelect.value === "account" && !accountInput.value.trim()) {
+        setStatus(
+          "status",
+          "err",
+          "Enter the account_id first — it must match the account_id used in your input file."
+        );
         return;
       }
 
@@ -163,7 +177,8 @@ async function main() {
 
       const cookieValue = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
       const scopeDomain = domainInput.value.trim() || hostname;
-      const line = buildLine(formatSelect.value, scopeDomain, cookieValue);
+      const accountId = accountInput.value.trim();
+      const line = buildLine(formatSelect.value, scopeDomain, accountId, cookieValue);
 
       preview.value = line;
       preview.style.display = "block";
