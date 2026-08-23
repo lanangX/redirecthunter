@@ -172,10 +172,14 @@
       <input type="text" id="accountInput" placeholder="account_001">
       <div class="hint">
         Must match the <code>account_id</code> used in your input file's
-        <code>account_id|URL</code> rows. Paste this line into your
-        <code>bl-check-accounts.txt</code>. Repeat per account — same
-        account_id, one line per header — if an account needs more than
-        one header (e.g. Cookie + User-Agent).
+        <code>account_id|URL</code> rows. Letters/digits/underscore/hyphen
+        only, must start with a letter — <strong>no dots</strong> (the CLI
+        uses a dot to tell an account_id apart from a domain, e.g.
+        <code>marketplace.whmcs.com-jasapasangngt</code> gets normalized to
+        <code>marketplace-whmcs-com-jasapasangngt</code> automatically).
+        Paste this line into your <code>bl-check-accounts.txt</code>.
+        Repeat per account — same account_id, one line per header — if an
+        account needs more than one header (e.g. Cookie + User-Agent).
       </div>
     </div>
 

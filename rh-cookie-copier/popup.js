@@ -42,6 +42,28 @@ async function ensureHostPermission(url) {
   });
 }
 
+// Mirrors redirecthunter/loader.py's `_ACCOUNT_ID_PATTERN` exactly:
+// letters/digits/underscore/hyphen only, must start with a letter. A dot
+// (or any other character) breaks the CLI's own account_id-vs-URL
+// disambiguation -- a line whose account_id contains "." silently fails
+// to be recognized as an account row at all (loader.py falls back to
+// treating the whole line as a plain URL row instead of raising an
+// error), so we normalize here rather than let that ambiguity into the
+// copied line.
+const ACCOUNT_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+function sanitizeAccountId(raw) {
+  const trimmed = raw.trim();
+  // Collapse any run of disallowed characters (dots, spaces, etc.) into
+  // a single "-", e.g. "marketplace.whmcs.com-jasapasangngt" ->
+  // "marketplace-whmcs-com-jasapasangngt".
+  let cleaned = trimmed.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/-+/g, "-");
+  // The pattern also requires starting with a letter -- strip any
+  // leading digits/hyphens/underscores rather than guess a prefix.
+  cleaned = cleaned.replace(/^[^A-Za-z]+/, "");
+  return cleaned;
+}
+
 function buildLine(format, domain, accountId, cookieValue) {
   if (format === "raw") return cookieValue;
   if (format === "global") return `Cookie: ${cookieValue}`;
@@ -142,6 +164,22 @@ async function main() {
     accountRow.style.display = formatSelect.value === "account" ? "block" : "none";
   });
 
+  // Normalize the account_id as the user types (e.g. on blur) so the
+  // preview/clipboard line always matches what the CLI will actually
+  // recognize as an account row -- see sanitizeAccountId() above.
+  accountInput.addEventListener("blur", () => {
+    const original = accountInput.value;
+    const cleaned = sanitizeAccountId(original);
+    if (cleaned !== original.trim() && original.trim() !== "") {
+      accountInput.value = cleaned;
+      setStatus(
+        "status",
+        "info",
+        `Account ID normalized to "${cleaned}" (letters/digits/_/- only, must start with a letter — dots aren't allowed in account_id).`
+      );
+    }
+  });
+
   // ---------------- COPY PANEL ----------------
 
   fetchBtn.addEventListener("click", async () => {
@@ -155,13 +193,19 @@ async function main() {
         return;
       }
 
-      if (formatSelect.value === "account" && !accountInput.value.trim()) {
-        setStatus(
-          "status",
-          "err",
-          "Enter the account_id first — it must match the account_id used in your input file."
-        );
-        return;
+      if (formatSelect.value === "account") {
+        const cleaned = sanitizeAccountId(accountInput.value);
+        if (!cleaned) {
+          setStatus(
+            "status",
+            "err",
+            "Enter the account_id first — it must match the account_id used in your input file."
+          );
+          return;
+        }
+        if (cleaned !== accountInput.value.trim()) {
+          accountInput.value = cleaned;
+        }
       }
 
       const cookies = await promisify(chrome.cookies.getAll.bind(chrome.cookies), {
