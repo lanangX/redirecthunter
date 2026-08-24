@@ -146,7 +146,7 @@ intentionally checked without any special headers" rather than leaving
 it out and triggering the missing-account error above.
 
 ```bash
-redirecthunter bl-check examples/backlink-sample.txt -d medilana.id \
+redirecthunter bl-check examples/tier1.txt -d medilana.id \
   --accounts-file examples/bl-check-accounts.txt
 ```
 
@@ -213,11 +213,11 @@ from the previous tier's results is tedious and easy to get wrong —
 `bl-chain` does the whole thing in one command:
 
 ```bash
-redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
-redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt examples/bl-chain-tier3.txt -d medilana.id --require-confirmed-parent --accounts-file examples/bl-check-accounts.txt
+redirecthunter bl-chain examples/tier1.txt examples/tier2.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
+redirecthunter bl-chain examples/tier1.txt examples/tier2.txt examples/tier3.txt -d medilana.id --require-confirmed-parent --accounts-file examples/bl-check-accounts.txt
 ```
 
-`--accounts-file` is needed here because `examples/bl-chain-tier1.txt`
+`--accounts-file` is needed here because `examples/tier1.txt`
 includes one `account_id|URL` row -- and, since the shipped
 `bl-check-accounts.txt` ships with every account commented out, these
 exact commands still error with a "missing account_id" message until

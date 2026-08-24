@@ -547,7 +547,7 @@ redirecthunter bl-check [OPTIONS] INPUT_FILE
 **Examples**
 
 ```bash
-redirecthunter bl-check examples/backlink.txt -d medilana.id
+redirecthunter bl-check examples/tier1.txt -d medilana.id
 redirecthunter bl-check backlinks.csv -d medilana.id -c 16 -t 20 --exact
 redirecthunter bl-check backlinks.txt -d medilana.id --strict -l "Q3 audit"
 redirecthunter bl-check backlinks.txt -d medilana.id --browser
@@ -606,14 +606,14 @@ redirecthunter bl-chain [OPTIONS] TIER_PATHS...
 **Examples**
 
 ```bash
-redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
-redirecthunter bl-chain examples/bl-chain-tier1.txt examples/bl-chain-tier2.txt examples/bl-chain-tier3.txt -d medilana.id --require-confirmed-parent --accounts-file examples/bl-check-accounts.txt
+redirecthunter bl-chain examples/tier1.txt examples/tier2.txt -d medilana.id --accounts-file examples/bl-check-accounts.txt
+redirecthunter bl-chain examples/tier1.txt examples/tier2.txt examples/tier3.txt -d medilana.id --require-confirmed-parent --accounts-file examples/bl-check-accounts.txt
 redirecthunter bl-chain tier1.txt tier2.txt -d medilana.id -c 16 --exact -l "Q3 pyramid audit"
 redirecthunter bl-chain tier1.txt tier2.txt --config redirecthunter.yaml
 ```
 
 `--accounts-file` is required in the first two examples above because
-`examples/bl-chain-tier1.txt` includes one `account_id|URL` row (see
+`examples/tier1.txt` includes one `account_id|URL` row (see
 [Account-scoped sessions](./BACKLINK_GUIDE.md#account-scoped-sessions-accounts-file)) --
 any referenced `account_id` missing from the registry is a hard error,
 so a plain `bl-chain` run over that same tier file without

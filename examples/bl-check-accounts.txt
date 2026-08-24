@@ -23,7 +23,7 @@
 #
 # Pair this registry with input rows prefixed "account_id|URL" (TXT), an
 # "account_id" column (CSV), or a "account_id" key (JSON) -- see
-# examples/backlink-sample.txt for a matching input file that references
+# examples/tier1.txt for a matching input file that references
 # account_001 and account_002 below.
 #
 # Any account_id referenced by an input row but missing from this file

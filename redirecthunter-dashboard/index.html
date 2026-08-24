@@ -53,6 +53,10 @@
     padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.02em;
   }
   .drop-card button:hover{filter:brightness(1.08)}
+  .drop-card button.secondary{
+    background:transparent;color:var(--text);border:1px solid var(--border);margin-top:8px;
+  }
+  .drop-card button.secondary:hover{border-color:var(--muted);filter:none}
   .drop-card input{display:none}
   .drop-status{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:14px;min-height:16px}
   .drop-status.err{color:var(--dead)}
@@ -172,6 +176,26 @@
   }
   #blacklistText:focus{outline:none;border-color:var(--alive);}
   .blacklist-status{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;}
+
+  .docs-content{margin-top:8px;line-height:1.6;}
+  .docs-content h1{font-size:22px;margin:28px 0 12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+  .docs-content h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px;}
+  .docs-content h3{font-size:15px;margin:20px 0 8px;color:var(--info);}
+  .docs-content h4{font-size:13px;margin:16px 0 6px;color:var(--muted);}
+  .docs-content p{margin:8px 0;color:var(--text);font-size:13px;}
+  .docs-content ul,.docs-content ol{margin:8px 0 8px 22px;font-size:13px;}
+  .docs-content li{margin:3px 0;}
+  .docs-content a{color:var(--info);}
+  .docs-content code{font-family:var(--mono);font-size:12px;background:rgba(124,148,144,.12);padding:1px 5px;border-radius:3px;}
+  .docs-content table{border-collapse:collapse;width:100%;margin:12px 0;font-size:12px;}
+  .docs-content th,.docs-content td{border:1px solid var(--border);padding:6px 9px;text-align:left;vertical-align:top;}
+  .docs-content th{background:var(--panel-2);color:var(--muted);font-weight:600;}
+  .docs-content hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
+  .code-copy-wrap{position:relative;margin:10px 0;}
+  .docs-content .code-copy-wrap pre{margin:0;background:var(--panel-2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;overflow-x:auto;}
+  .docs-content .code-copy-wrap pre code{background:none;padding:0;font-size:12px;line-height:1.5;}
+  .code-copy-btn{position:absolute;top:8px;right:8px;font-size:10.5px;padding:3px 9px;border-radius:4px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;}
+  .code-copy-btn:hover{color:var(--text);border-color:var(--muted);}
   .blacklist-status .n{color:var(--amber);font-weight:700;}
   .blacklist-status.warn .n{color:var(--dead);}
 
@@ -195,6 +219,13 @@
     background:rgba(255,176,0,.15);color:var(--amber);font-family:var(--mono);white-space:nowrap;
   }
   .issue-badge.more{background:rgba(124,148,144,.15);color:var(--muted);}
+
+  #fixSrcBody td{vertical-align:top;}
+  #fixSrcBody .muted-sub{color:var(--muted);font-size:10px;margin-top:2px;}
+  #fixSrcBody .truncate{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #fixSrcBody tr.overridden{background:rgba(0,217,181,.06);}
+  #fixSrcBody tr.suspicious td:nth-child(2){color:var(--amber);}
+  .warn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);}
   .issue-list{text-align:left;}
   .h1-list{font-family:var(--mono);font-size:12px;color:var(--text);text-align:left;line-height:1.7;}
 
@@ -245,8 +276,10 @@
     background:#0E1516;border:1px solid var(--border);border-radius:6px;padding:8px 10px;
   }
   .body-link-fix.fixed{border-color:var(--alive);}
+  .body-link-fix.neutral{border-color:var(--border);}
   .body-link-fix-label{color:var(--amber);font-size:10.5px;line-height:1.5;margin-bottom:6px;}
   .body-link-fix.fixed .body-link-fix-label{color:var(--alive);}
+  .body-link-fix.neutral .body-link-fix-label{color:var(--muted);}
   .body-link-fix-label code{background:transparent;color:inherit;padding:0;}
   .body-link-fix-row{display:flex;gap:6px;}
   .body-link-fix-input{
@@ -282,8 +315,10 @@
     <h1>Muat file scan (.db)</h1>
     <p>Seret &amp; lepas file <code>redirecthunter.db</code> ke sini, atau pilih file secara manual.
        Semua diproses langsung di browser Anda — file tidak pernah diunggah ke server mana pun.</p>
-    <button id="pickBtn">Pilih file .db</button>
+    <button id="pickFolderBtn">📁 Buka folder proyek (auto-muat .db)</button>
+    <button id="pickBtn" class="secondary">Pilih file .db manual</button>
     <input type="file" id="fileInput" accept=".db,.sqlite,.sqlite3" />
+    <div class="drop-status" id="fsaStatus"></div>
     <div class="drop-status" id="dropStatus"></div>
   </div>
 </div>
@@ -293,6 +328,7 @@
   <header class="top">
     <div class="brand"><span class="dot"></span> REDIRECTHUNTER</div>
     <div class="target" id="headerTarget"></div>
+    <button class="reload" id="refreshBtn" style="display:none">🔄 refresh</button>
     <button class="reload" id="reloadBtn">⭯ ganti file</button>
   </header>
 
@@ -302,7 +338,9 @@
       <button type="button" class="tab-btn" data-tab="crawl" id="crawlTabBtn" style="display:none">Crawl<span class="msel-count" id="crawlTabCount"></span></button>
       <button type="button" class="tab-btn" data-tab="backlink" id="backlinkTabBtn" style="display:none">Backlink Checker<span class="msel-count" id="backlinkTabCount"></span></button>
       <button type="button" class="tab-btn" data-tab="fix">Perbaikan Body Link<span class="msel-count" id="fixTabCount"></span></button>
+      <button type="button" class="tab-btn" data-tab="fixsrc">Perbaikan Source URL<span class="msel-count" id="fixSrcTabCount"></span></button>
       <button type="button" class="tab-btn" data-tab="blacklist">Spam Blacklist</button>
+      <button type="button" class="tab-btn" data-tab="docs">Dokumentasi</button>
     </div>
 
     <div id="tabResults" class="tab-panel active">
@@ -355,12 +393,14 @@
           <thead>
             <tr>
               <th></th>
+              <th title="ID unik hasil ini — klik baris untuk lihat detail lengkap">ID</th>
               <th class="sortable" data-col="status_code">Status <span class="sort-arrow"></span></th>
               <th class="sortable" data-col="source_url">Source URL <span class="sort-arrow"></span></th>
               <th class="sortable" data-col="final_url">Final URL <span class="sort-arrow"></span></th>
               <th class="sortable" data-col="redirect_type">Type <span class="sort-arrow"></span></th>
               <th class="sortable" data-col="hop_count">Hops <span class="sort-arrow"></span></th>
               <th class="sortable" data-col="latency_ms">Latency <span class="sort-arrow"></span></th>
+              <th class="sortable" data-col="timestamp">Waktu (WIB) <span class="sort-arrow"></span></th>
             </tr>
           </thead>
           <tbody id="resultsBody"></tbody>
@@ -530,6 +570,55 @@
       </div>
     </div>
 
+    <div id="tabFixSrc" class="tab-panel">
+      <div class="panel">
+        <h2>Perbaikan Source URL</h2>
+        <p class="hint">
+          Ini untuk kesalahan pada baris <b>source URL</b> itu sendiri (template mentah dari
+          <code>examples/urls.txt</code>, dengan <code>{TARGET}</code> masih utuh) — bukan mismatch
+          <code>body_link</code> seperti tab sebelah. Contoh khasnya: typo di dalam salah satu baris
+          <code>urls.txt</code> yang membuat hasil ekspansi jadi rusak, misalnya karakter nyasar sebelum
+          <code>{TARGET}</code> yang membuat skema URL dobel/rusak seperti
+          <code>http://t{TARGET}</code> → <code>http://thttps://…</code>. Baris yang ditandai
+          <span style="color:var(--amber)">⚠ kemungkinan salah</span> terdeteksi otomatis dari pola skema
+          ganda pada hasil ekspansinya — ini cuma bantuan urutan/sorot, bukan syarat: Anda bisa mengedit
+          source URL mana pun di bawah ini, termasuk yang tidak ditandai, dan kotak edit yang sama juga
+          selalu muncul di drawer detail tabel Results (bukan cuma saat ditandai ⚠) — jadi kalau menemukan
+          source URL aneh dalam bentuk apa pun, tidak harus berupa skema ganda, tetap bisa langsung
+          diperbaiki dari sana. Perbaikan tersimpan di browser ini dan otomatis diterapkan ke tampilan/expor,
+          dan — kalau folder proyek sudah disambungkan (lihat layar muat file) — bisa langsung disinkronkan
+          ke file <code>examples/urls.txt</code> yang asli, termasuk membersihkan baris duplikat.
+        </p>
+        <div class="toolbar">
+          <input type="text" id="fixSrcSearch" placeholder="cari source URL…" />
+          <span class="count" id="fixSrcCount"></span>
+        </div>
+        <div class="toolbar" style="margin-top:-6px">
+          <button id="fixSrcSyncBtn">💾 Simpan perbaikan &amp; bersihkan duplikat ke urls.txt</button>
+          <button id="fixSrcDownloadBtn">⬇ Unduh urls.txt hasil perbaikan</button>
+        </div>
+        <div class="drop-status" id="fixSrcSyncStatus" style="margin:0 0 12px"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Baris</th>
+              <th></th>
+              <th>Source URL (template asli)</th>
+              <th>Preview ekspansi (target saat ini)</th>
+              <th>Source URL diperbaiki</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="fixSrcBody"></tbody>
+        </table>
+        <div class="pager">
+          <span id="fixSrcPageInfo"></span>
+          <button id="fixSrcPrevPage">← Prev</button>
+          <button id="fixSrcNextPage">Next →</button>
+        </div>
+      </div>
+    </div>
+
     <div id="tabBlacklist" class="tab-panel">
       <div class="panel">
         <h2>Spam Blacklist</h2>
@@ -551,6 +640,33 @@
         </div>
         <textarea id="blacklistText" spellcheck="false"></textarea>
         <div class="blacklist-status" id="blacklistStatus"></div>
+      </div>
+    </div>
+
+    <div id="tabDocs" class="tab-panel">
+      <div class="panel">
+        <h2>Dokumentasi</h2>
+        <p class="hint">
+          Dibaca langsung dari <code>docs/CLI_REFERENCE.md</code> di folder proyek yang tersambung (tombol
+          "Buka folder proyek" di layar muat file) — bukan salinan yang di-hardcode di sini, supaya tidak
+          pernah basi dibanding CLI-nya sendiri. Setiap command punya tombol salin sendiri.
+        </p>
+        <p class="hint">
+          <b>Folder file backlink lokal Anda</b> (untuk <code>bl-check</code>/<code>bl-chain</code>, mis.
+          <code>tier1.txt</code>, <code>tier2.txt</code>, <code>bl-check-accounts.txt</code> — file yang
+          biasanya <em>tidak</em> di-commit ke git karena berisi data nyata): isi nama foldernya di bawah,
+          dan setiap command yang menyebut file-file itu di bawah <code>examples/</code> akan otomatis ikut
+          memakai folder ini saat disalin. Tersimpan di browser ini (tidak hilang saat dibuka lagi).
+          Tidak memengaruhi <code>examples/urls.txt</code> — itu tetap untuk <code>scan</code> dan sengaja
+          tidak ikut berubah.
+        </p>
+        <div class="toolbar">
+          <label for="docsBacklinkFolder" style="font-size:12px;color:var(--muted)">Folder file backlink:</label>
+          <input type="text" id="docsBacklinkFolder" placeholder="examples" style="width:180px" />
+          <button id="docsRefreshBtn">🔄 Muat ulang dari docs/CLI_REFERENCE.md</button>
+        </div>
+        <div class="drop-status" id="docsStatus"></div>
+        <div id="docsContent" class="docs-content"></div>
       </div>
     </div>
   </main>
@@ -669,6 +785,59 @@ function saveOverridesToStorage(){
   lsSet('bodyLinkOverrides', JSON.stringify(Object.fromEntries(bodyLinkOverrides)));
 }
 
+// ---------- source_url fix-up ("Perbaikan Source URL") ----------
+// Unlike bodyLinkOverrides (keyed by body_link, storing only the {TARGET} substitution), this
+// map is keyed by the RAW source_url TEMPLATE (with {TARGET} still intact) and stores a whole
+// replacement template. It's for fixing authoring typos in the template itself — e.g. a stray
+// character glued onto {TARGET} that produces a broken double-scheme URL — which is a different
+// class of problem than "body_link doesn't match target". See docs/MEMORY.md if this pattern
+// gets extended further.
+let sourceUrlOverrides = new Map();
+let fixSrcCandidates = [];   // [{source_url, n, exampleFinal, suspicious}]
+let fixSrcPage = 0;
+let fixSrcSearchTerm = '';
+const FIX_SRC_PAGE_SIZE = 50;
+
+function loadSourceUrlOverridesFromStorage(){
+  const raw = lsGet('sourceUrlOverrides');
+  if(!raw) return;
+  try{
+    const obj = JSON.parse(raw);
+    sourceUrlOverrides = new Map(Object.entries(obj));
+  }catch(e){ /* corrupt/old data — ignore, start fresh */ }
+}
+function saveSourceUrlOverridesToStorage(){
+  lsSet('sourceUrlOverrides', JSON.stringify(Object.fromEntries(sourceUrlOverrides)));
+}
+// Applies a saved fix (if any) wherever a raw source_url template is displayed or exported.
+function displaySourceUrl(sourceUrl){
+  return sourceUrlOverrides.has(sourceUrl) ? sourceUrlOverrides.get(sourceUrl) : sourceUrl;
+}
+
+// ---------- documentation tab state (see the full module further down for behavior) ----------
+// Declared up here (not next to the functions that use them) because bindDocsTab() is called
+// during the early one-time-init block below, and `const`/`let` are only usable after their own
+// declaration executes (temporal dead zone) — unlike `function` declarations, which hoist fully.
+let cliRefText = null;
+let markedLoadPromise = null;
+const DOCS_BACKLINK_FOLDER_LS_KEY = 'docsBacklinkFolder';
+const BACKLINK_EXAMPLE_FILES = ['tier1.txt', 'tier2.txt', 'tier3.txt', 'bl-check-accounts.txt'];
+
+// ---------- WIB (Asia/Jakarta, UTC+7) time formatting ----------
+// results.timestamp is stored as ISO-8601 UTC (see docs/DATABASE_SCHEMA.md) — this project's
+// users are all in Indonesia, so every place a timestamp is shown to the user gets converted
+// and explicitly labeled "WIB" rather than left as a raw UTC string.
+const WIB_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+});
+function toWIB(isoUtc){
+  if(!isoUtc) return null;
+  const d = new Date(isoUtc);
+  if(isNaN(d.getTime())) return null;
+  return WIB_FORMATTER.format(d).replace(/\./g, ':') + ' WIB';
+}
+
 function decodeDefaultBlacklist(){
   const b64 = document.getElementById('defaultBlacklistB64').textContent.trim();
   const bin = atob(b64);
@@ -750,11 +919,14 @@ blacklistRawText = lsGet('blacklistText') || decodeDefaultBlacklist();
 document.getElementById('blacklistText').value = blacklistRawText;
 renderBlacklistStatus();
 loadOverridesFromStorage();
+loadSourceUrlOverridesFromStorage();
 // Tab buttons and the blacklist editor are static, db-independent DOM — wire them once here, not
 // inside bindEvents()/boot() (which reruns on every db load and would stack duplicate listeners).
 document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 bindBlacklistTab();
 bindFixTab();
+bindFixSrcTab();
+bindDocsTab();
 
 // ---------- sql.js init ----------
 async function initSql(){
@@ -806,6 +978,7 @@ const dropStatus = document.getElementById('dropStatus');
 const fileInput = document.getElementById('fileInput');
 
 document.getElementById('pickBtn').addEventListener('click', () => fileInput.click());
+document.getElementById('pickFolderBtn').addEventListener('click', pickProjectFolder);
 fileInput.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
 
 ['dragenter','dragover'].forEach(ev => dropcard.addEventListener(ev, e => {
@@ -839,6 +1012,11 @@ document.getElementById('reloadBtn').addEventListener('click', () => {
   fixPage = 0;
   fixSearchTerm = '';
   document.getElementById('fixSearch').value = '';  // bodyLinkOverrides intentionally NOT reset — same reason
+  fixSrcCandidates = [];
+  fixSrcPage = 0;
+  fixSrcSearchTerm = '';
+  document.getElementById('fixSrcSearch').value = '';   // sourceUrlOverrides intentionally NOT reset — same reason
+  document.getElementById('fixSrcSyncStatus').textContent = '';
   selectedCrawlStatuses.clear();
   selectedCrawlIssues.clear();
   document.getElementById('crawlSearch').value = '';
@@ -870,6 +1048,194 @@ async function handleFile(file){
   }
 }
 
+// ---------- project folder auto-load / refresh (File System Access API) ----------
+// Lets the user grant access to the monorepo root once; from then on the dashboard finds the
+// newest .db under it automatically instead of requiring "Pilih file .db" every time, and offers
+// a one-click "refresh" to re-scan for a newer/updated .db. Only Chromium browsers support
+// showDirectoryPicker — everything here fails soft into the existing manual-pick flow otherwise.
+// The same directory handle also backs the "Perbaikan Source URL" tab's urls.txt sync.
+const FSA_SUPPORTED = typeof window.showDirectoryPicker === 'function';
+let projectDirHandle = null;
+let loadedDbFileMeta = null;   // {name, path, lastModified, size} of the .db currently loaded from the folder
+const fsaStatusEl = document.getElementById('fsaStatus');
+const refreshBtn = document.getElementById('refreshBtn');
+
+function setFsaStatus(msg, isErr){
+  if(!fsaStatusEl) return;
+  fsaStatusEl.textContent = msg || '';
+  fsaStatusEl.classList.toggle('err', !!isErr);
+}
+
+// ---- tiny IndexedDB wrapper, just to persist the one directory handle across reloads ----
+const IDB_NAME = 'redirecthunter_dashboard_fsa';
+const IDB_STORE = 'handles';
+function idbOpen(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSet(key, val){
+  const dbx = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = dbx.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(key){
+  const dbx = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = dbx.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function verifyPermission(handle, mode){
+  const opts = { mode: mode || 'readwrite' };
+  if((await handle.queryPermission(opts)) === 'granted') return true;
+  if((await handle.requestPermission(opts)) === 'granted') return true;
+  return false;
+}
+
+// Recursively lists .db/.sqlite/.sqlite3 files under dirHandle, up to maxDepth subfolder levels
+// (covers both a .db sitting at repo root and one under examples/), skipping dotfolders.
+async function findDbFiles(dirHandle, maxDepth){
+  maxDepth = maxDepth === undefined ? 2 : maxDepth;
+  const found = [];
+  async function walk(handle, depth, prefix){
+    for await (const [name, entry] of handle.entries()){
+      if(entry.kind === 'file' && /\.(db|sqlite|sqlite3)$/i.test(name)){
+        try{
+          const file = await entry.getFile();
+          found.push({ name, path: prefix + name, handle: entry, lastModified: file.lastModified, size: file.size });
+        }catch(e){ /* unreadable file — skip */ }
+      }else if(entry.kind === 'directory' && depth < maxDepth && !name.startsWith('.') && name !== 'node_modules'){
+        await walk(entry, depth + 1, prefix + name + '/');
+      }
+    }
+  }
+  await walk(dirHandle, 0, '');
+  return found;
+}
+
+// Prefers a file literally named redirecthunter.db (the tool's documented default); otherwise
+// falls back to whichever .db/.sqlite/.sqlite3 file was modified most recently.
+function pickBestDbFile(files){
+  if(!files.length) return null;
+  const exact = files.filter(f => f.name.toLowerCase() === 'redirecthunter.db');
+  const pool = exact.length ? exact : files;
+  return pool.slice().sort((a, b) => b.lastModified - a.lastModified)[0];
+}
+
+async function pickProjectFolder(){
+  if(!FSA_SUPPORTED){
+    setFsaStatus('Browser ini tidak mendukung akses folder otomatis (pakai Chrome/Edge terbaru). Silakan pilih file .db secara manual.', true);
+    return;
+  }
+  try{
+    const handle = await window.showDirectoryPicker({ id: 'redirecthunter-root', mode: 'readwrite' });
+    projectDirHandle = handle;
+    await idbSet('projectDirHandle', handle);
+    await tryAutoLoadFromProjectDir(true);
+  }catch(e){
+    if(e && e.name !== 'AbortError') setFsaStatus('Gagal membuka folder: ' + e.message, true);
+  }
+}
+
+async function tryAutoLoadFromProjectDir(interactive){
+  if(!projectDirHandle) return false;
+  setFsaStatus('Mencari file .db terbaru di folder proyek…');
+  try{
+    const files = await findDbFiles(projectDirHandle);
+    const best = pickBestDbFile(files);
+    if(!best){
+      setFsaStatus(interactive ? 'Tidak ada file .db ditemukan di folder ini (dicek sampai 2 level subfolder).' : '', interactive);
+      return false;
+    }
+    const file = await best.handle.getFile();
+    loadedDbFileMeta = { name: best.name, path: best.path, lastModified: file.lastModified, size: file.size };
+    setFsaStatus(`Folder tersambung — memuat ${best.path} otomatis…`);
+    await handleFile(file);
+    refreshBtn.style.display = '';
+    return true;
+  }catch(e){
+    setFsaStatus('Gagal memuat otomatis: ' + e.message, true);
+    return false;
+  }
+}
+
+async function refreshFromProjectDir(){
+  if(!projectDirHandle){
+    alert('Belum ada folder proyek yang tersambung. Klik "Buka folder proyek" di layar muat file dulu.');
+    return;
+  }
+  const original = refreshBtn.textContent;
+  refreshBtn.textContent = '⏳ memeriksa…';
+  refreshBtn.disabled = true;
+  try{
+    const ok = await verifyPermission(projectDirHandle, 'read');
+    if(!ok) throw new Error('izin folder ditolak');
+    const files = await findDbFiles(projectDirHandle);
+    const best = pickBestDbFile(files);
+    if(!best) throw new Error('tidak ada file .db ditemukan');
+    const changed = !loadedDbFileMeta || best.path !== loadedDbFileMeta.path ||
+                    best.lastModified !== loadedDbFileMeta.lastModified || best.size !== loadedDbFileMeta.size;
+    if(!changed){
+      refreshBtn.textContent = '✓ sudah terbaru';
+    }else{
+      const file = await best.handle.getFile();
+      loadedDbFileMeta = { name: best.name, path: best.path, lastModified: file.lastModified, size: file.size };
+      await handleFile(file);
+      refreshBtn.textContent = '✓ dimuat ulang';
+    }
+  }catch(e){
+    alert('Gagal refresh: ' + e.message);
+    refreshBtn.textContent = original;
+    refreshBtn.disabled = false;
+    return;
+  }
+  setTimeout(() => { refreshBtn.textContent = original; refreshBtn.disabled = false; }, 1400);
+}
+refreshBtn.addEventListener('click', refreshFromProjectDir);
+
+// Resolves the examples/urls.txt file handle relative to the connected project root. Returns
+// null (rather than throwing) if no folder is connected or the file/folder isn't there — callers
+// surface that as a status message instead of a console error.
+async function getUrlsTxtHandle(){
+  if(!projectDirHandle) return null;
+  try{
+    const examplesDir = await projectDirHandle.getDirectoryHandle('examples', { create: false });
+    return await examplesDir.getFileHandle('urls.txt', { create: false });
+  }catch(e){
+    return null;
+  }
+}
+
+// On page load: silently restore a previously-granted directory handle and auto-load from it if
+// permission is still active. If the browser has downgraded permission to 'prompt' (common after
+// a full reload), we can't call requestPermission() without a user gesture, so just surface a
+// reconnect hint instead of guessing.
+(async function restoreProjectDirOnLoad(){
+  if(!FSA_SUPPORTED) return;
+  try{
+    const handle = await idbGet('projectDirHandle');
+    if(!handle) return;
+    projectDirHandle = handle;
+    const granted = (await handle.queryPermission({ mode: 'readwrite' })) === 'granted';
+    if(granted){
+      await tryAutoLoadFromProjectDir(false);
+    }else{
+      setFsaStatus('Folder proyek sebelumnya belum diizinkan ulang — klik "Buka folder proyek" untuk menyambungkan kembali.');
+    }
+  }catch(e){ /* no saved handle yet, or IndexedDB unavailable — ignore, manual flow still works */ }
+})();
+
 // ---------- boot dashboard ----------
 function boot(){
   scanMeta = qOne('SELECT * FROM scan LIMIT 1');
@@ -885,6 +1251,8 @@ function boot(){
   applyFilters(); // runs populateFilters() (incl. status-bucket bar + alive bar) then fetchPage()
   loadFixCandidates();
   renderFixTab();
+  loadFixSrcCandidates();
+  renderFixSrcTab();
 
   const tableNames = q("SELECT name FROM sqlite_master WHERE type='table'").map(r => r.name);
   hasCrawlData = tableNames.includes('crawls') && tableNames.includes('crawl_pages') && tableNames.includes('crawl_links');
@@ -1048,7 +1416,10 @@ function switchTab(tab){
   document.getElementById('tabCrawl').classList.toggle('active', tab === 'crawl');
   document.getElementById('tabBacklink').classList.toggle('active', tab === 'backlink');
   document.getElementById('tabFix').classList.toggle('active', tab === 'fix');
+  document.getElementById('tabFixSrc').classList.toggle('active', tab === 'fixsrc');
   document.getElementById('tabBlacklist').classList.toggle('active', tab === 'blacklist');
+  document.getElementById('tabDocs').classList.toggle('active', tab === 'docs');
+  if(tab === 'docs' && !cliRefText) loadCliReference();
 }
 
 // ---------- body_link fix-up tab (see docs/MEMORY.md v1.8) ----------
@@ -1147,6 +1518,287 @@ function bindFixTab(){
   }, 200));
   document.getElementById('fixPrevPage').addEventListener('click', () => { if(fixPage > 0){ fixPage--; renderFixTab(); } });
   document.getElementById('fixNextPage').addEventListener('click', () => { fixPage++; renderFixTab(); });
+}
+
+// ---------- source_url fix tab ("Perbaikan Source URL") ----------
+// Flags source_url templates whose expansion (with {TARGET} substituted) produces a broken,
+// double-scheme URL — the classic symptom of a stray character glued onto {TARGET} in urls.txt,
+// e.g. "...ht{TARGET}..." expanding to "...httphttps://..." / "...thttps://...". This is a loose
+// heuristic meant to surface likely candidates, not a hard filter — every source_url is editable
+// here regardless of whether it gets flagged.
+function isSuspiciousSourceUrl(sourceUrl, target){
+  if(!sourceUrl || !target) return false;
+  const expanded = sourceUrl.split('{TARGET}').join(target);
+  let decoded = expanded;
+  try{ decoded = decodeURIComponent(expanded); }catch(e){ /* malformed %-sequence — check as-is */ }
+  if(/:\/\/[a-z0-9]{0,3}https?:\/\//i.test(decoded)) return true;   // e.g. "://thttps://" or "://https://"
+  if(decoded.includes('{TARGET}')) return true;                    // placeholder somehow survived expansion
+  return false;
+}
+
+function loadFixSrcCandidates(){
+  const target = (scanMeta && scanMeta.target) ? scanMeta.target : '';
+  const rows = q(`SELECT source_url su, COUNT(*) n, MIN(final_url) exampleFinal
+                  FROM results WHERE source_url IS NOT NULL GROUP BY source_url`);
+  fixSrcCandidates = rows.map(r => ({
+    source_url: r.su,
+    n: r.n,
+    exampleFinal: r.exampleFinal,
+    suspicious: isSuspiciousSourceUrl(r.su, target),
+  })).sort((a, b) => (b.suspicious - a.suspicious) || (b.n - a.n));
+  fixSrcPage = 0;
+}
+
+function renderFixSrcTab(){
+  const target = (scanMeta && scanMeta.target) ? scanMeta.target : '';
+  const term = fixSrcSearchTerm.trim().toLowerCase();
+  const filtered = term
+    ? fixSrcCandidates.filter(c => c.source_url.toLowerCase().includes(term))
+    : fixSrcCandidates;
+  const total = filtered.length;
+  const suspiciousCount = fixSrcCandidates.filter(c => c.suspicious).length;
+  const totalPages = Math.max(1, Math.ceil(total / FIX_SRC_PAGE_SIZE));
+  if(fixSrcPage >= totalPages) fixSrcPage = totalPages - 1;
+  const start = fixSrcPage * FIX_SRC_PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + FIX_SRC_PAGE_SIZE);
+
+  document.getElementById('fixSrcCount').textContent =
+    `${total.toLocaleString('id-ID')} source URL unik` +
+    (suspiciousCount ? ` · ${suspiciousCount.toLocaleString('id-ID')} kemungkinan salah` : '') +
+    (sourceUrlOverrides.size ? ` · ${sourceUrlOverrides.size.toLocaleString('id-ID')} sudah diperbaiki` : '');
+  document.getElementById('fixSrcTabCount').textContent = suspiciousCount ? `(${suspiciousCount.toLocaleString('id-ID')})` : '';
+
+  document.getElementById('fixSrcBody').innerHTML = pageRows.length ? pageRows.map(c => {
+    const overridden = sourceUrlOverrides.has(c.source_url);
+    const currentVal = overridden ? sourceUrlOverrides.get(c.source_url) : c.source_url;
+    const previewExpanded = (currentVal || '').split('{TARGET}').join(target || '{TARGET belum diketahui}');
+    return `<tr class="${overridden ? 'overridden' : ''} ${c.suspicious ? 'suspicious' : ''}">
+      <td>${c.n.toLocaleString('id-ID')}</td>
+      <td>${c.suspicious ? '<span class="warn-dot" title="pola skema ganda terdeteksi"></span>' : ''}</td>
+      <td><span class="truncate" title="${escapeHtml(c.source_url)}">${escapeHtml(c.source_url)}</span></td>
+      <td><span class="truncate" title="${escapeHtml(previewExpanded)}">${escapeHtml(previewExpanded)}</span></td>
+      <td><input type="text" class="fix-input" value="${escapeHtml(currentVal)}" data-orig="${escapeHtml(c.source_url)}" placeholder="source URL yang benar (sertakan {TARGET})"></td>
+      <td>${overridden ? `<button type="button" class="fix-reset" data-orig="${escapeHtml(c.source_url)}">Reset</button><span class="fix-badge">diperbaiki</span>` : ''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="no-results">Tidak ada hasil.</td></tr>`;
+
+  document.getElementById('fixSrcPageInfo').textContent = total
+    ? `Halaman ${fixSrcPage + 1} / ${totalPages} — ${total.toLocaleString('id-ID')} source URL`
+    : '—';
+  document.getElementById('fixSrcPrevPage').disabled = fixSrcPage <= 0;
+  document.getElementById('fixSrcNextPage').disabled = fixSrcPage >= totalPages - 1;
+
+  document.getElementById('fixSrcBody').querySelectorAll('.fix-input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const orig = inp.dataset.orig;
+      if(inp.value === orig || inp.value.trim() === ''){
+        sourceUrlOverrides.delete(orig);
+      }else{
+        sourceUrlOverrides.set(orig, inp.value);
+      }
+      saveSourceUrlOverridesToStorage();
+      renderFixSrcTab();
+      fetchPage();   // reflect the fix in the Results table's Source URL column immediately
+    });
+  });
+  document.getElementById('fixSrcBody').querySelectorAll('.fix-reset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sourceUrlOverrides.delete(btn.dataset.orig);
+      saveSourceUrlOverridesToStorage();
+      renderFixSrcTab();
+      fetchPage();
+    });
+  });
+}
+
+function bindFixSrcTab(){
+  document.getElementById('fixSrcSearch').addEventListener('input', debounce(() => {
+    fixSrcSearchTerm = document.getElementById('fixSrcSearch').value;
+    fixSrcPage = 0;
+    renderFixSrcTab();
+  }, 200));
+  document.getElementById('fixSrcPrevPage').addEventListener('click', () => { if(fixSrcPage > 0){ fixSrcPage--; renderFixSrcTab(); } });
+  document.getElementById('fixSrcNextPage').addEventListener('click', () => { fixSrcPage++; renderFixSrcTab(); });
+  document.getElementById('fixSrcSyncBtn').addEventListener('click', syncSourceUrlFixesToUrlsTxt);
+  document.getElementById('fixSrcDownloadBtn').addEventListener('click', downloadFixedUrlsTxt);
+}
+
+// Applies every saved override as an exact-line replacement against a urls.txt's raw text, and
+// dedupes exact-duplicate lines in the same pass (first occurrence wins) — matches read_lines()'s
+// blank-line-skipping behavior in redirecthunter/target_replace.py so a round-trip through this
+// stays compatible with the CLI. Returns {text, updatedCount, dupRemoved, blankRemoved, totalOut}.
+function buildFixedUrlsTxtText(originalText){
+  const lines = originalText.split(/\r?\n/);
+  const outLines = [];
+  const seen = new Set();
+  let updatedCount = 0, dupRemoved = 0, blankRemoved = 0;
+  for(const raw of lines){
+    const line = raw.replace(/\r$/, '');
+    if(line.trim() === ''){ blankRemoved++; continue; }
+    const fixed = sourceUrlOverrides.has(line) ? sourceUrlOverrides.get(line) : line;
+    if(fixed !== line) updatedCount++;
+    if(seen.has(fixed)){ dupRemoved++; continue; }
+    seen.add(fixed);
+    outLines.push(fixed);
+  }
+  return { text: outLines.join('\n') + '\n', updatedCount, dupRemoved, blankRemoved, totalOut: outLines.length };
+}
+
+async function syncSourceUrlFixesToUrlsTxt(){
+  const statusEl = document.getElementById('fixSrcSyncStatus');
+  statusEl.classList.remove('err');
+  if(!projectDirHandle){
+    statusEl.classList.add('err');
+    statusEl.textContent = 'Sambungkan folder proyek dulu — klik "Buka folder proyek" di layar muat file, lalu buka .db dari sana.';
+    return;
+  }
+  try{
+    const ok = await verifyPermission(projectDirHandle, 'readwrite');
+    if(!ok) throw new Error('izin baca/tulis folder ditolak');
+    const fileHandle = await getUrlsTxtHandle();
+    if(!fileHandle) throw new Error('tidak ditemukan examples/urls.txt di folder yang disambungkan');
+    const file = await fileHandle.getFile();
+    const originalText = await file.text();
+    const result = buildFixedUrlsTxtText(originalText);
+    const writable = await fileHandle.createWritable();
+    await writable.write(result.text);
+    await writable.close();
+    statusEl.textContent = `✓ examples/urls.txt diperbarui — ${result.updatedCount} baris diperbaiki, ` +
+      `${result.dupRemoved} duplikat dihapus, ${result.totalOut} baris tersisa.`;
+  }catch(e){
+    statusEl.classList.add('err');
+    statusEl.textContent = 'Gagal menyinkronkan: ' + e.message;
+  }
+}
+
+// Fallback for browsers without the File System Access API, or when no project folder is
+// connected: builds the same corrected+deduped output from the DB's known distinct source_url
+// values and offers it as a download instead of writing the file directly. Row order here follows
+// this tab's own sort (kemungkinan-salah dulu), which may differ from the original urls.txt order.
+function downloadFixedUrlsTxt(){
+  const seen = new Set();
+  const outLines = [];
+  for(const c of fixSrcCandidates){
+    const fixed = displaySourceUrl(c.source_url);
+    if(seen.has(fixed)) continue;
+    seen.add(fixed);
+    outLines.push(fixed);
+  }
+  const blob = new Blob([outLines.join('\n') + '\n'], {type: 'text/plain;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'urls_diperbaiki.txt';
+  a.click();
+}
+
+// ---------- documentation tab ("Dokumentasi") ----------
+// Renders docs/CLI_REFERENCE.md (read live from the connected project folder — see the FSA
+// module above) as styled HTML instead of raw markdown, with a copy button on every code block.
+// marked.js is lazy-loaded from CDN on first use, not eagerly at page load, since most sessions
+// never open this tab. The "folder file backlink" setting rewrites `examples/<file>` -> `<folder>/<file>`
+// for a fixed whitelist of backlink-related example filenames when a command is copied — it never
+// touches `examples/urls.txt` (scan's input), which is intentionally left alone (see hint text in
+// the tab itself). State (cliRefText, markedLoadPromise, DOCS_BACKLINK_FOLDER_LS_KEY,
+// BACKLINK_EXAMPLE_FILES) is declared earlier, up near sourceUrlOverrides — see the comment there.
+
+function loadDocsBacklinkFolderFromStorage(){
+  const el = document.getElementById('docsBacklinkFolder');
+  el.value = lsGet(DOCS_BACKLINK_FOLDER_LS_KEY) || '';
+}
+function saveDocsBacklinkFolderToStorage(){
+  lsSet(DOCS_BACKLINK_FOLDER_LS_KEY, document.getElementById('docsBacklinkFolder').value.trim());
+}
+
+// Rewrites examples/<whitelisted-backlink-file> -> <folder>/<whitelisted-backlink-file>. Leaves
+// everything else (including examples/urls.txt) untouched.
+function substituteBacklinkFolder(text, folder){
+  const cleanFolder = (folder || '').trim().replace(/\/+$/, '');
+  if(!cleanFolder || cleanFolder === 'examples') return text;
+  let out = text;
+  for(const f of BACKLINK_EXAMPLE_FILES){
+    const re = new RegExp('examples/' + f.replace(/\./g, '\\.'), 'g');
+    out = out.replace(re, cleanFolder + '/' + f);
+  }
+  return out;
+}
+
+function loadMarkedIfNeeded(){
+  if(window.marked) return Promise.resolve();
+  if(markedLoadPromise) return markedLoadPromise;
+  markedLoadPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('gagal memuat pustaka markdown dari CDN (butuh koneksi internet)'));
+    document.head.appendChild(s);
+  });
+  return markedLoadPromise;
+}
+
+async function loadCliReference(){
+  const statusEl = document.getElementById('docsStatus');
+  const contentEl = document.getElementById('docsContent');
+  statusEl.classList.remove('err');
+  if(!projectDirHandle){
+    statusEl.textContent = 'Sambungkan folder proyek dulu — klik "Buka folder proyek" di layar muat file, lalu buka .db dari sana.';
+    contentEl.innerHTML = '';
+    return;
+  }
+  statusEl.textContent = 'Memuat docs/CLI_REFERENCE.md…';
+  try{
+    const ok = await verifyPermission(projectDirHandle, 'read');
+    if(!ok) throw new Error('izin folder ditolak');
+    const docsDir = await projectDirHandle.getDirectoryHandle('docs', { create: false });
+    const fileHandle = await docsDir.getFileHandle('CLI_REFERENCE.md', { create: false });
+    const file = await fileHandle.getFile();
+    cliRefText = await file.text();
+    await loadMarkedIfNeeded();
+    renderCliReference();
+    statusEl.textContent = `Dimuat dari docs/CLI_REFERENCE.md (diperbarui terakhir ${new Date(file.lastModified).toLocaleString('id-ID')}).`;
+  }catch(e){
+    statusEl.classList.add('err');
+    statusEl.textContent = 'Gagal memuat docs/CLI_REFERENCE.md: ' + e.message;
+    contentEl.innerHTML = '';
+  }
+}
+
+function renderCliReference(){
+  if(!cliRefText || !window.marked) return;
+  const folder = document.getElementById('docsBacklinkFolder').value;
+  const substituted = substituteBacklinkFolder(cliRefText, folder);
+  const contentEl = document.getElementById('docsContent');
+  contentEl.innerHTML = window.marked.parse(substituted);
+  contentEl.querySelectorAll('pre > code').forEach(code => {
+    const pre = code.parentElement;
+    if(pre.parentElement.classList.contains('code-copy-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'code-copy-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'code-copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(code.textContent).then(() => {
+        btn.textContent = '✓ disalin';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+      }).catch(() => {
+        btn.textContent = 'gagal';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+      });
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function bindDocsTab(){
+  loadDocsBacklinkFolderFromStorage();
+  document.getElementById('docsBacklinkFolder').addEventListener('input', debounce(() => {
+    saveDocsBacklinkFolderToStorage();
+    renderCliReference();
+  }, 250));
+  document.getElementById('docsRefreshBtn').addEventListener('click', loadCliReference);
 }
 
 // ---------- spam blacklist tab (edit/load/download/apply) ----------
@@ -1461,7 +2113,7 @@ function openCrawlDrawer(pageId){
     ['Meta Desc Length', r.meta_description_length], ['H1 Count', r.h1_count],
     ['Internal Links', r.internal_link_count], ['External Links', r.external_link_count],
     ['Word Count', r.word_count], ['Latency', r.latency_ms ? Math.round(r.latency_ms)+' ms' : null],
-    ['Error', r.error], ['Timestamp', r.timestamp],
+    ['Error', r.error], ['Timestamp (WIB)', toWIB(r.timestamp) || r.timestamp],
   ].filter(([, v]) => v !== null && v !== undefined && v !== '');
 
   const metaRowsHtml = metaRows.map(([k, v]) => `<div class="meta-row"><span>${k}</span><span>${linkifyValue(v)}</span></div>`).join('');
@@ -1648,7 +2300,7 @@ function renderBacklinkTable(rows){
       <td class="truncate" style="max-width:280px" title="${escapeHtml(r.source_url||'')}">${escapeHtml(r.source_url||'')}</td>
       <td class="truncate" style="max-width:280px" title="${escapeHtml(r.final_url||'')}">${escapeHtml(r.final_url||'—')}</td>
       <td>${backlinkMatchBadge(r)}</td>
-      <td>${escapeHtml(r.checked_at||'—')}</td>
+      <td>${toWIB(r.checked_at) || r.checked_at || '—'}</td>
     </tr>`).join('');
   document.querySelectorAll('#backlinkBody tr').forEach(tr => {
     tr.addEventListener('click', () => openBacklinkDrawer(tr.dataset.id));
@@ -1674,7 +2326,7 @@ function openBacklinkDrawer(resultId){
     ['Robots Header', r.robots_header],
     ['Notes', r.notes],
     ['Error', r.error],
-    ['Checked At', r.checked_at],
+    ['Checked At (WIB)', toWIB(r.checked_at) || r.checked_at],
   ].filter(([, v]) => v !== null && v !== undefined && v !== '');
 
   const metaRowsHtml = metaRows.map(([k, v]) => `<div class="meta-row"><span>${k}</span><span>${linkifyValue(v)}</span></div>`).join('');
@@ -1952,7 +2604,7 @@ function fetchPage(){
   const t = resultsTable();
   const { where, params } = buildWhere();
   const total = qOne(`SELECT COUNT(*) c FROM ${t} ${where}`, params).c;
-  const rows = q(`SELECT result_id, status_code, source_url, final_url, redirect_type, hop_count, latency_ms, alive
+  const rows = q(`SELECT result_id, status_code, source_url, final_url, redirect_type, hop_count, latency_ms, alive, timestamp
                   FROM ${t} ${where} ${orderClause()} LIMIT ${PAGE_SIZE} OFFSET ${page*PAGE_SIZE}`, params);
   renderTable(rows);
   document.getElementById('resultCount').textContent = `${total.toLocaleString('id-ID')} hasil`;
@@ -1974,19 +2626,25 @@ function updateSortHeaders(){
 function renderTable(rows){
   if(!rows.length){
     document.getElementById('resultsBody').innerHTML =
-      `<tr><td colspan="7" class="no-results">Tidak ada hasil yang cocok dengan kombinasi filter saat ini. Coba longgarkan salah satu filter.</td></tr>`;
+      `<tr><td colspan="9" class="no-results">Tidak ada hasil yang cocok dengan kombinasi filter saat ini. Coba longgarkan salah satu filter.</td></tr>`;
     return;
   }
-  document.getElementById('resultsBody').innerHTML = rows.map(r => `
+  document.getElementById('resultsBody').innerHTML = rows.map(r => {
+    const fixedSourceUrl = displaySourceUrl(r.source_url);
+    const wib = toWIB(r.timestamp);
+    return `
     <tr data-id="${r.result_id}">
       <td><span class="pill ${r.alive ? 'alive':'dead'}"></span></td>
+      <td class="truncate" style="max-width:96px" title="ID lengkap: ${escapeHtml(r.result_id)}"><code>${escapeHtml((r.result_id||'').slice(0,8))}</code></td>
       <td>${badge(r.status_code)}</td>
-      <td class="truncate" title="${escapeHtml(r.source_url||'')}">${escapeHtml(r.source_url||'')}</td>
+      <td class="truncate" title="${escapeHtml(fixedSourceUrl||'')}${fixedSourceUrl!==r.source_url ? ' (diperbaiki dari: '+escapeHtml(r.source_url||'')+')' : ''}">${fixedSourceUrl!==r.source_url ? '✓ ' : ''}${escapeHtml(fixedSourceUrl||'')}</td>
       <td class="truncate" title="${escapeHtml(r.final_url||'')}">${escapeHtml(r.final_url||'—')}</td>
       <td>${escapeHtml(r.redirect_type||'—')}</td>
       <td>${r.hop_count ?? '—'}</td>
       <td>${r.latency_ms ? Math.round(r.latency_ms)+'ms' : '—'}</td>
-    </tr>`).join('');
+      <td class="truncate" title="${wib ? wib + ' (UTC: '+escapeHtml(r.timestamp)+')' : '—'}">${wib || '—'}</td>
+    </tr>`;
+  }).join('');
   document.querySelectorAll('#resultsBody tr').forEach(tr => {
     tr.addEventListener('click', () => openDrawer(tr.dataset.id));
   });
@@ -2020,7 +2678,7 @@ function openDrawer(resultId){
     ['Latency', r.latency_ms ? Math.round(r.latency_ms)+' ms' : '—'],
     ['Alive', r.alive ? 'yes' : 'no'],
     ['Error', r.error],
-    ['Timestamp', r.timestamp],
+    ['Timestamp (WIB)', toWIB(r.timestamp) || r.timestamp],
   ].filter(([,v]) => v !== null && v !== undefined && v !== '');
 
   const chainHtml = chain.length ? chain.map(h => `
@@ -2044,6 +2702,11 @@ function openDrawer(resultId){
   const currentSub = hasOverride ? bodyLinkOverrides.get(r.body_link) : defaultSubstitution(r.body_link, scanTarget, bareTarget);
   const exportLine = computeExportLine(r.source_url, r.body_link, scanTarget, bareTarget);
 
+  const srcSuspicious = isSuspiciousSourceUrl(r.source_url, scanTarget);
+  const hasSrcOverride = r.source_url && sourceUrlOverrides.has(r.source_url);
+  const fixedSourceUrl = displaySourceUrl(r.source_url);
+  const srcFixExpanded = (fixedSourceUrl || '').split('{TARGET}').join(scanTarget || '{TARGET}');
+
   const metaRowsHtml = metaRows.map(([k, v]) => {
     if(k === 'Body Link' && bodySuspicious){
       return `<div class="meta-row"><span>${k}</span><span>
@@ -2063,8 +2726,21 @@ function openDrawer(resultId){
   }).join('');
 
   document.getElementById('drawerBody').innerHTML = `
-    <h3>${escapeHtml(r.source_url||'')}</h3>
+    <h3>${escapeHtml(fixedSourceUrl||'')}</h3>
     <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:14px;">${escapeHtml(resultId)}</div>
+    <div class="body-link-fix${hasSrcOverride ? ' fixed' : (srcSuspicious ? '' : ' neutral')}" style="max-width:none;margin:0 0 16px;text-align:left;">
+      <div class="body-link-fix-label">${
+        hasSrcOverride ? '✓ source URL sudah diperbaiki manual'
+        : srcSuspicious ? '⚠ source URL ini mengandung pola skema ganda/rusak'
+        : 'Source URL template — selalu bisa diedit langsung, walau tidak ditandai otomatis'
+      } — ubah template-nya di sini (sertakan <code>{TARGET}</code>):</div>
+      <div class="body-link-fix-row">
+        <input type="text" class="body-link-fix-input" id="drawerSrcFix" value="${escapeHtml(fixedSourceUrl||'')}" placeholder="source URL yang benar (sertakan {TARGET})">
+        <button type="button" id="drawerSrcSave">Simpan</button>
+        ${hasSrcOverride ? '<button type="button" id="drawerSrcReset">Reset</button>' : ''}
+      </div>
+      <div class="body-link-fix-preview">Hasil ekspansi: <b id="drawerSrcPreview">${escapeHtml(srcFixExpanded)}</b></div>
+    </div>
     ${metaRowsHtml}
     <div class="section-title">Redirect Chain (${chain.length})</div>
     ${chainHtml}
@@ -2073,6 +2749,36 @@ function openDrawer(resultId){
   `;
   document.getElementById('overlay').classList.add('show');
   document.getElementById('drawer').classList.add('show');
+
+  {
+    const srcInput = document.getElementById('drawerSrcFix');
+    const srcPreview = document.getElementById('drawerSrcPreview');
+    srcInput.addEventListener('input', () => {
+      srcPreview.textContent = srcInput.value.split('{TARGET}').join(scanTarget || '{TARGET}');
+    });
+    document.getElementById('drawerSrcSave').addEventListener('click', () => {
+      const val = srcInput.value;
+      if(val === r.source_url || val.trim() === ''){
+        sourceUrlOverrides.delete(r.source_url);
+      }else{
+        sourceUrlOverrides.set(r.source_url, val);
+      }
+      saveSourceUrlOverridesToStorage();
+      renderFixSrcTab();
+      fetchPage();
+      openDrawer(resultId);
+    });
+    const srcResetBtn = document.getElementById('drawerSrcReset');
+    if(srcResetBtn){
+      srcResetBtn.addEventListener('click', () => {
+        sourceUrlOverrides.delete(r.source_url);
+        saveSourceUrlOverridesToStorage();
+        renderFixSrcTab();
+        fetchPage();
+        openDrawer(resultId);
+      });
+    }
+  }
 
   if(bodySuspicious){
     const input = document.getElementById('drawerBodyLinkFix');
@@ -2126,16 +2832,17 @@ function defaultSubstitution(bodyLink, target, bareTarget){
   return hasDoubleProtocolBodyLink(bodyLink) ? bareTarget : target;
 }
 function computeDefaultExportLine(sourceUrl, bodyLink, target, bareTarget){
-  return (sourceUrl || '').split('{TARGET}').join(defaultSubstitution(bodyLink, target, bareTarget));
+  return displaySourceUrl(sourceUrl || '').split('{TARGET}').join(defaultSubstitution(bodyLink, target, bareTarget));
 }
 // v1.9: overrides are keyed by body_link VALUE, not source_url — see the bodyLinkOverrides
 // declaration for why (one fix here covers every source_url template that produces the same
-// mangled body_link, instead of needing a separate fix per template).
+// mangled body_link, instead of needing a separate fix per template). displaySourceUrl() applies
+// the (separate) "Perbaikan Source URL" fix to the template itself before the {TARGET} swap.
 function computeExportLine(sourceUrl, bodyLink, target, bareTarget){
   const sub = (bodyLink && bodyLinkOverrides.has(bodyLink))
     ? bodyLinkOverrides.get(bodyLink)
     : defaultSubstitution(bodyLink, target, bareTarget);
-  return (sourceUrl || '').split('{TARGET}').join(sub);
+  return displaySourceUrl(sourceUrl || '').split('{TARGET}').join(sub);
 }
 
 // Loose match used only to flag "this body_link doesn't look like the target" for the fix-up
@@ -2159,10 +2866,13 @@ function closeDrawer(){
 function exportCsv(){
   const t = resultsTable();
   const { where, params } = allRows._where !== undefined ? { where: allRows._where, params: allRows._params } : buildWhere(currentFilters());
-  const rows = q(`SELECT result_id, status_code, source_url, final_url, redirect_type, hop_count, latency_ms, alive, server, error
+  const rows = q(`SELECT result_id, status_code, source_url, final_url, redirect_type, hop_count, latency_ms, alive, server, error, timestamp
                   FROM ${t} ${where} ${orderClause()}`, params);
-  const cols = ['result_id','status_code','source_url','final_url','redirect_type','hop_count','latency_ms','alive','server','error'];
-  const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => csvCell(r[c])).join(','))).join('\n');
+  const cols = ['result_id','status_code','source_url','final_url','redirect_type','hop_count','latency_ms','alive','server','error','timestamp_wib'];
+  const csv = [cols.join(',')].concat(rows.map(r => {
+    const row = { ...r, source_url: displaySourceUrl(r.source_url), timestamp_wib: toWIB(r.timestamp) || '' };
+    return cols.map(c => csvCell(row[c])).join(',');
+  })).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

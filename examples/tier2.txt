@@ -2,7 +2,7 @@
 # is checked against the hostnames extracted from tier 1's own input URLs
 # (every row, not just confirmed ones) -- so these pages should link to
 # one of tier 1's hosts, e.g. guest-post-site-a.example.com from
-# examples/bl-chain-tier1.txt. Pass --require-confirmed-parent to
+# examples/tier1.txt. Pass --require-confirmed-parent to
 # restrict that derived set to only tier-1 rows that confirmed a match.
 
 https://forum-thread.example.com/topic/42

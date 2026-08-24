@@ -1,4 +1,7 @@
-# Example input for `redirecthunter bl-check`. Row shapes:
+# Example input for `redirecthunter bl-check` -- and, unchanged, tier-1
+# input for `redirecthunter bl-chain` (tier 1 is checked directly against
+# -d/--domain, exactly like a plain `bl-check` run, so one file covers
+# both). Row shapes:
 #   URL                      -> checked against -d/--domain
 #   URL|target               -> checked against `target` instead
 #   account_id|URL           -> checked using that account's session
@@ -7,10 +10,14 @@
 # actually fetch. Use this as a format reference, not a real input file.
 #
 # Usage:
-#   redirecthunter bl-check examples/backlink-sample.txt -d medilana.id \
+#   redirecthunter bl-check examples/tier1.txt -d medilana.id \
 #     --accounts-file examples/bl-check-accounts.txt
+#
+#   redirecthunter bl-chain examples/tier1.txt examples/tier2.txt \
+#     -d medilana.id --accounts-file examples/bl-check-accounts.txt
 
-https://example-blog.com/post-1
+https://guest-post-site-a.example.com/article-1
+https://guest-post-site-b.example.com/roundup
 
 # Per-row target override (see "Per-row target override" in docs/BACKLINK_GUIDE.md):
 https://example-blog.com/post-2|target-a.example.com
@@ -23,4 +30,4 @@ account_002|https://social-platform.example.com/profile/brand-2
 account_001|https://vendor-marketplace.example.com/product/123
 
 # Back to a plain, unauthenticated public URL:
-https://another-public-site.example.com/review
+https://directory-listing.example.com/company/example-root

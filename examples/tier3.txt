@@ -1,6 +1,6 @@
 # Example tier-3 input for `redirecthunter bl-chain`. By default, tier 3
 # is checked against the hostnames extracted from tier 2's own input
-# URLs -- e.g. forum-thread.example.com from examples/bl-chain-tier2.txt.
+# URLs -- e.g. forum-thread.example.com from examples/tier2.txt.
 
 https://social-share-widget.example.io/share?url=abc
 https://rss-aggregator.example.co/feed/item-99
